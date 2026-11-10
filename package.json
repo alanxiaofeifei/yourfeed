@@ -1,0 +1,82 @@
+{
+  "name": "yourfeed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "start": "wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
+    "build:sites": "YOURFEED_BUILD_PROFILE=sites node scripts/build.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "deploy": "npm run db:migrate:remote && wrangler deploy --config dist/server/wrangler.json",
+    "core:update": "node scripts/update-core.mjs"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.19",
+    "better-auth": "^1.7.19",
+    "drizzle-orm": "0.45.2",
+    "fast-xml-parser": "^5.3.0",
+    "lucide-react": "^1.31.0",
+    "next": "16.3.4",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "sanitize-html": "^2.17.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "4.20260515.1",
+    "@openai/sites-vite-plugin": "^0.2.0",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/sanitize-html": "^2.16.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "react-server-dom-webpack": "19.2.6",
+    "typescript": "5.9.3",
+    "vinext": "1.0.0-beta.5",
+    "vite": "8.0.13",
+    "vitest": "^4.1.0",
+    "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4"
+    }
+  },
+  "description": "A private, self-hosted feed for your videos, reading, news and projects.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alanxiaofeifei/yourfeed.git"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Your private content, feedback, encrypted provider settings and sign-in data. A D1 database is provisioned for this instance."
+      },
+      "APP_ENCRYPTION_KEY": {
+        "description": "Generate with `openssl rand -hex 32`. Keep this encryption master key backed up privately; changing it makes saved provider keys unreadable."
+      },
+      "OWNER_EMAIL": {
+        "description": "Only this email address may own and sign in to this private instance."
+      },
+      "AUTH_BASE_URL": {
+        "description": "The final HTTPS origin for sign-in, for example https://yourfeed.example.workers.dev. Set after the first deployment and redeploy."
+      },
+      "AUTH_SECRET": {
+        "description": "Generate a separate value with `openssl rand -hex 32` for sign-in sessions."
+      }
+    }
+  }
+}

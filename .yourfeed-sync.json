@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "upstream": "alanxiaofeifei/yourfeed",
+  "ref": "latest-stable",
+  "include": ["server/**", "shared/**", "app/components/**", "app/i18n.tsx", "app/page.tsx", "app/layout.tsx", "app/globals.css", "worker/index.ts", "vite.config.ts", "scripts/build.mjs", "db/schema.ts", "drizzle/**", "tests/**", "scripts/update-core.mjs", ".github/workflows/core-update.yml"]
+}

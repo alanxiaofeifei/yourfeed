@@ -1,0 +1,58 @@
+name: Propose shared core update
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: yourfeed-core-update
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: github.repository != 'alanxiaofeifei/yourfeed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Resolve stable release to immutable revision
+        id: stable
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { resolveStableRevision } from './scripts/update-core.mjs';
+          const sha = await resolveStableRevision(process.env.YOURFEED_UPSTREAM_REPO || 'alanxiaofeifei/yourfeed');
+          appendFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\n`);
+          NODE
+        env:
+          YOURFEED_UPSTREAM_REPO: ${{ vars.YOURFEED_UPSTREAM_REPO }}
+      - name: Propose allowlisted changes
+        run: node scripts/update-core.mjs
+        env:
+          YOURFEED_UPSTREAM_REPO: ${{ vars.YOURFEED_UPSTREAM_REPO }}
+          YOURFEED_UPSTREAM_REF: ${{ steps.stable.outputs.sha }}
+      - name: Refresh dependency lock without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Open reviewable update pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: yourfeed/shared-core-update
+          delete-branch: true
+          commit-message: 'chore: propose YourFeed shared core update'
+          title: 'chore: update YourFeed shared core'
+          body: |
+            Proposes allowlisted shared code and append-only migration additions from YourFeed.
+            Personal data, deployment configuration and local modifications are protected.
+            Type checks, tests and the production build passed. Review before merging.
+            This workflow does not merge, migrate a database or deploy the site.
