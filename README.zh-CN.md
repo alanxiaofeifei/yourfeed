@@ -4,9 +4,19 @@
 
 把视频、文章、新闻、收藏帖子和开源项目放进自己的私人首页。休息时轻松发现，学习时专注进阶。由你的来源和反馈影响推荐，只在打开网站或手动操作时更新。
 
+**在线所有者实例：**[yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+
+**如何登录：**这个地址是仅所有者可访问的私人实例，不是公共演示站。只有该实例配置的所有者可以通过邮箱验证码登录；访客不能注册，也不能用自己的邮箱登录这个实例。想了解产品，可以先看[界面截图](#界面预览)，或通过下方按钮部署自己的实例，再使用你为该实例配置的 `OWNER_EMAIL` 登录。
+
+**项目灵感：**[Andrej Karpathy 关于 HackerTube 的原帖](https://x.com/karpathy/status/2116957135661945283)。YourFeed 将专属视频空间的想法，扩展为整合阅读、新闻、帖子与开源发现的个人首页。
+
 [![部署到 Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed)
 
-按钮会为你复制仓库、创建 Worker 和 D1 数据库。**使用内容流前，需要完成本人登录配置。** 未配置的实例只显示设置指引，私人接口保持关闭。支持 Google、GitHub 登录；邮箱验证码是可选项，无需为了部署先购买邮件服务。详细步骤见[部署指南](docs/deployment.md)。
+这是 Cloudflare 官方的 [Deploy to Workers](https://deploy.workers.cloudflare.com/) 部署按钮。链接会把本 GitHub 仓库交给 Cloudflare 的部署流程，在你自己的账户中复制仓库、创建 Worker 和 D1 数据库。
+
+每个部署都是独立实例，不会复制开发者的 Cloudflare 实例、数据库、密钥或个人数据。你需要自行配置登录与 API Secrets。
+
+**使用内容流前，需要完成本人登录配置。** 按钮只是部署入口，不会替你配置所有者身份、登录服务或可选的 AI 凭据。未配置的实例只显示设置指引，私人接口保持关闭。支持 Google、GitHub 登录；邮箱验证码是可选项，无需为了部署先购买邮件服务。详细步骤见[部署指南](docs/deployment.md)。
 
 `OWNER_EMAIL` 填写**你本人用于登录和接收验证码的邮箱**。`onboarding@resend.dev` 只是测试**发件地址**，不是你的登录邮箱，而且只能给注册 Resend 的邮箱发信；正式使用需要验证自己的发件域名。`RESEND_API_KEY` 必须在 Cloudflare 中设为 **Secret（密钥）**，不要选 Text。发送接口成功仅表示服务商已受理，不代表邮件已到收件箱；请求被拒绝时网站会显示发送错误。
 
@@ -16,6 +26,24 @@
 - 可选 OpenAI、DeepSeek、GLM 和兼容 HTTPS 接口。明确选择服务商与模型，以每日数量、预算预留和分析缓存限制使用，不会自动切换服务商产生费用。
 - 独立部署仅本人登录，API Key 在服务端加密；保留可选 ChatGPT Sites 适配层。
 - 域名向导检查公开 DNS、HTTPS 和当前实例，不收集 Cloudflare 管理令牌，不自动修改登录主地址。
+
+## 界面预览
+
+以下截图使用真实 React 界面，并明确标记为**演示内容**。示例新闻、内容源与所有者名称均为虚构展示数据，不是实时新闻或私人订阅。新部署不会预装这组演示内容。
+
+部署按钮从本 GitHub 开源源码，在你自己的 Cloudflare 账户创建独立 Worker 和 D1 数据库。需要自行配置登录与 API Secrets；不会复制开发者的实例、数据库、密钥或个人数据。
+
+**混合内容首页与今日必看**
+
+![YourFeed 演示首页：今日必看、视频与阅读](docs/screenshots/home.png)
+
+**AI 设置与始终可见的保存栏**
+
+![YourFeed 演示 AI 设置：空白密钥输入框与底部未保存提示](docs/screenshots/ai-settings.png)
+
+**管理自己的内容来源**
+
+![YourFeed 演示来源管理：示例订阅与创作者](docs/screenshots/sources.png)
 
 ## 适合谁？
 

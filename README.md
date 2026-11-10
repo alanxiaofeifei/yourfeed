@@ -4,9 +4,19 @@
 
 A private home for videos, articles, news, saved posts and open-source projects. Choose a relaxed feed for a break or a focused feed for your next step. Your sources and feedback shape the ranking; updates happen when you open the site or request them.
 
+**Hosted owner instance:** [yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+
+**How to sign in:** this address is a private owner instance, not a public demo. Only its configured owner can sign in using the email verification code; visitors cannot register or sign in with their own email. To explore the product, see the [screenshots](#interface-preview), or deploy your own instance below and sign in with the `OWNER_EMAIL` you configure there.
+
+**Inspiration:** [Andrej Karpathy’s HackerTube post](https://x.com/karpathy/status/2116957135661945283). YourFeed carries the idea of a personal video space into a mixed home for reading, news, posts and open-source discoveries.
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed)
 
-The button creates your own repository, Worker and D1 database. **Finish owner sign-in configuration before using the feed.** An unconfigured instance shows setup instructions and keeps private APIs closed. Google and GitHub sign-in are supported; email codes are optional. See the [deployment guide](docs/deployment.md).
+This is Cloudflare’s official [Deploy to Workers](https://deploy.workers.cloudflare.com/) button. It passes this GitHub repository to Cloudflare’s deployment flow, which copies the repository and creates a Worker and D1 database in your own account.
+
+Each deployment is independent: it does not copy the developer’s Cloudflare instance, database, keys, or personal data. You configure your own sign-in and API Secrets.
+
+**Finish owner sign-in configuration before using the feed.** The button starts deployment; it does not configure your owner identity, sign-in provider or optional AI credentials for you. An unconfigured instance shows setup instructions and keeps private APIs closed. Google and GitHub sign-in are supported; email codes are optional. See the [deployment guide](docs/deployment.md).
 
 `OWNER_EMAIL` is **your own sign-in and code-recipient email**. `onboarding@resend.dev` is a test **sender**, never your owner address; it can send only to the email used to register your Resend account. Normal email use requires a verified sending domain. Store `RESEND_API_KEY` as a Cloudflare **Secret**, not Text. A successful send request means the provider accepted it, not that it reached your inbox; rejected requests are shown as errors.
 
@@ -16,6 +26,24 @@ The button creates your own repository, Worker and D1 database. **Finish owner s
 - Optional AI reading through OpenAI, DeepSeek, GLM or an HTTPS compatible provider. Provider/model selection is explicit; daily limits, budget reservations and analysis caching bound usage. Prices and upstream subscriptions are separate from hosting.
 - Owner-only standalone sign-in, server-side encrypted API keys, and an optional ChatGPT Sites adapter.
 - A domain guide checks public DNS, HTTPS and this instance. It never collects Cloudflare management tokens or changes your sign-in origin.
+
+## Interface preview
+
+These are real React views rendered with clearly marked **demo content**. The stories, sources and owner name are fictional examples, not live news or private subscription data. A fresh deployment does not include this sample feed.
+
+The deploy button uses this GitHub source to create an independent Worker and D1 database in your own Cloudflare account. You provide your own sign-in and API Secrets; the developer’s instance, database, keys and personal data are never copied.
+
+**A mixed feed with Daily picks**
+
+![YourFeed demo home with Daily picks, a video and an article](docs/screenshots/home.png)
+
+**AI settings with a persistent Save and apply bar**
+
+![YourFeed demo AI settings with a blank API key field and visible unsaved-changes bar](docs/screenshots/ai-settings.png)
+
+**Your sources, under your control**
+
+![YourFeed demo source management with sample feeds and creators](docs/screenshots/sources.png)
 
 ## Who is it for?
 
