@@ -7,9 +7,12 @@ import { selectBriefing } from './briefing';
 import { sessionForRequest } from './session';
 import { handleAuth, requireUser, requireRecentAuth } from './auth';
 import { getProfile, saveProfile } from './profile';
-import { createSource, updateSourceInput, deleteSource } from './sources';
+import { createSource, updateSourceInput, deleteSource, sourceComparisonKey } from './sources';
 import { getDeployment, saveDeployment, checkDeployment } from './deployment';
 import { providerErrorDiagnostic } from './provider-diagnostics';
+import {readSourceImportBody,previewSourceImport,commitSourceImport,validateDiscoveryMessages} from './source-import';
+import {sourceCatalog} from '../shared/source-catalog';
+import {cachedBatchContent,readFeedBatchRequest,rotatedFeedPage,validateFeedBatchInput} from './feed-rotation';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -42,6 +45,11 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
       const page=feedPage(ranked,cursor);
       return response({...page,total:ranked.length,sources:sources.filter(s=>s.enabled).length,lastUpdated:await getState(env,'last-sync'),mode});
     }
+    if(path==='/api/feed/batch'&&request.method==='POST'){
+      const options=validateFeedBatchInput(await readFeedBatchRequest(request));
+      const [items,sources,feedback,profile]=await Promise.all([cachedBatchContent(env,options.asOf),listSources(env),readFeedback(env,userId),presentationProfile()]);
+      return response({...rotatedFeedPage(items,sources,feedback,options,profile),sources:sources.filter(source=>source.enabled).length,lastUpdated:await getState(env,'last-sync'),mode:options.mode});
+    }
     if(path==='/api/feedback'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.id!=='string'||!body.patch||typeof body.patch!=='object')throw new HttpError(400,'反馈内容不完整。');
       const patch:Feedback={};for(const key of ['liked','saved','read','dismissed'] as const){const value=(body.patch as Record<string,unknown>)[key];if(typeof value==='boolean')patch[key]=value;}
@@ -49,6 +57,14 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
       return response({ok:true,feedback:await saveFeedback(env,userId,body.id,patch)});
     }
     if(path==='/api/sources'&&request.method==='GET')return response({sources:await listSources(env)});
+    if(path==='/api/sources/recommendations'&&request.method==='GET'){const existing=await listSources(env);return response({recommendations:sourceCatalog.map(entry=>({...entry,existingId:existing.find(source=>sourceComparisonKey(source)===sourceComparisonKey(entry))?.id}))});}
+    if(path==='/api/sources/discover/chat'&&request.method==='POST'){
+      const body=await readSourceImportBody(request);const messages=validateDiscoveryMessages(body.messages);const {sourceDiscoveryConversation}=await import('./ai');
+      const result=await sourceDiscoveryConversation(env,messages,sourceCatalog,await presentationProfile());const valid=new Set(sourceCatalog.map(entry=>entry.id));const recommendedIds=[...new Set(result.recommendedIds.filter(id=>valid.has(id)))];
+      return response({message:result.message,ready:result.ready===true&&recommendedIds.length>0,recommendedIds,...(result.needsConfiguration===true?{needsConfiguration:true}:{})});
+    }
+    if(path==='/api/sources/import/preview'&&request.method==='POST')return response(await previewSourceImport(env,await readSourceImportBody(request)));
+    if(path==='/api/sources/import/commit'&&request.method==='POST')return response(await commitSourceImport(env,await readSourceImportBody(request)));
     if(path==='/api/sources'&&request.method==='POST')return response({ok:true,source:await createSource(env,await readJson(request))},201);
     if(path==='/api/sources'&&request.method==='PATCH')return response({ok:true,source:await updateSourceInput(env,await readJson(request))});
     if(path==='/api/sources'&&request.method==='DELETE'){const body=await readJson(request);if(typeof body.id!=='string')throw new HttpError(400,'Source ID is required.');await deleteSource(env,body.id);return response({ok:true});}

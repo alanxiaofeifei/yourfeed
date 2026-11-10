@@ -19,7 +19,7 @@ export function matchingProfileGoal(item:ContentItem,profile:UserProfile):string
     return item.topics.some(topic=>[topic,TOPIC_LABELS[topic].zh,TOPIC_LABELS[topic].en.toLowerCase(),...topicAliases[topic].toLowerCase().split(' ')].filter(Boolean).some(term=>/^[a-z]{1,3}$/.test(term)?new RegExp('(?:^|[^a-z])'+term+'(?:$|[^a-z])','i').test(goal):goal.toLowerCase().includes(term)));
   });
 }
-export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<string,Feedback>,mode:Mode,kind:string='all',filter:string='all',query:string='',profile?:UserProfile):ContentItem[] {
+export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<string,Feedback>,mode:Mode,kind:string='all',filter:string='all',query:string='',profile?:UserProfile,asOf:number=Date.now()):ContentItem[] {
   const disabled=new Set(sources.filter(s=>(!s.enabled&&s.status!=='manual')||(s as Source&{blocked?:boolean}).blocked).map(s=>s.id));
   const githubDisabled=sources.some(s=>s.id==='github-stars'&&(!s.enabled||(s as Source&{blocked?:boolean}).blocked));
   const frequencies=new Map<string,number>();
@@ -28,7 +28,7 @@ export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<st
   for(const item of items){const f=feedback[item.id];if(!f)continue;const delta=(f.liked?1:0)+(f.saved?.4:0)-(f.dismissed?1.3:0);for(const topic of item.topics)affinity[topic]=(affinity[topic]||0)+delta/Math.max(1,item.topics.length);}
   const q=query.trim().toLocaleLowerCase();
   const enriched=items.map(item=>({...item,...feedback[item.id]})).filter(item=>!disabled.has(item.sourceId)&&!(githubDisabled&&item.platform.toLowerCase()==='github')&&!item.dismissed&&(kind==='all'||item.kind===kind)&&(filter==='saved'?item.saved:filter==='liked'?item.liked:filter==='read'?item.read:!item.read)&&(!q||[item.title,item.summary,item.sourceName,...item.topics,...item.topics.map(t=>topicAliases[t]),...item.topics.map(t=>TOPIC_LABELS[t].en)].join(' ').toLocaleLowerCase().includes(q)));
-  const now=Date.now();
+  const now=asOf;
   return enriched.map(item=>{
     const weight=(topic:Topic)=>profile?(profile.topicWeights[topic]||0)*(mode==='rest'?(['making','cooking','science','humanities'].includes(topic)?1:.8):1):(topics[mode][topic]||0);
     const matches=[...item.topics].sort((a,b)=>weight(b)-weight(a));

@@ -2,7 +2,7 @@ import {beforeEach,describe,it,expect,vi} from 'vitest';
 const memory=vi.hoisted(()=>({sources:[] as any[],items:[] as any[],state:new Map<string,string>()}));
 vi.mock('../server/db',()=>({listSources:async()=>memory.sources,listContent:async()=>memory.items,updateSource:async(_e:any,s:any)=>{memory.sources=[...memory.sources.filter(x=>x.id!==s.id),s];},getState:async(_e:any,k:string)=>memory.state.get(k)||null,setState:async(_e:any,k:string,v:string)=>{memory.state.set(k,v);}}));
 import {createSource,updateSourceInput,deleteSource,normalizeSourceInput} from '../server/sources';
-const env:any={DB:{prepare:()=>({bind:(id:string)=>({run:async()=>{memory.sources=memory.sources.filter(s=>s.id!==id);return {meta:{changes:1}};}})})}};
+const env:any={DB:{prepare:(sql:string)=>({bind:(id:string,json?:string,...args:string[])=>({run:async()=>{if(sql.startsWith('INSERT')){const identity=args[args.length-1];const own=memory.sources.find(source=>source.id===id);if(memory.sources.some(source=>source.id!==id&&source._identityKey===identity)||(!own&&memory.sources.length>=200))return {meta:{changes:0}};memory.sources=[...memory.sources.filter(source=>source.id!==id),JSON.parse(json!)];}else memory.sources=memory.sources.filter(s=>s.id!==id);return {meta:{changes:1}};}})})}};
 const publicDns=async()=>['93.184.216.34'];
 beforeEach(()=>{memory.sources=[];memory.items=[];memory.state.clear();});
 describe('owner-managed public content sources',()=>{

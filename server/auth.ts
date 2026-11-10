@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth/minimal';
+import { addOAuthServerContext, createAuthMiddleware, getOAuthState } from 'better-auth/api';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
@@ -63,6 +64,10 @@ async function sendMail(env:Env,email:string,otp:string,language:'zh'|'en'):Prom
 export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>void){
  const config=settings(env);const socialProviders:Record<string,any>={};
  for(const [provider,prefix] of [['google','GOOGLE'],['github','GITHUB']] as const){const clientId=value(env,prefix+'_CLIENT_ID'),clientSecret=value(env,prefix+'_CLIENT_SECRET');if(clientId&&clientSecret)socialProviders[provider]={clientId,clientSecret};}
+ const facebookId=value(env,'FACEBOOK_CLIENT_ID'),facebookSecret=value(env,'FACEBOOK_CLIENT_SECRET');
+ // Facebook does not attest mailbox ownership. It may only authenticate a
+ // subject explicitly linked by an already verified, recently signed-in owner.
+ if(facebookId&&facebookSecret)socialProviders.facebook={clientId:facebookId,clientSecret:facebookSecret,disableSignUp:true,mapProfileToUser:()=>({emailVerified:false})};
  return betterAuth({
   appName:'YourFeed',baseURL:config.origin,basePath:'/api/auth',secret:config.secret,
   database:drizzleAdapter(drizzle(env.DB as any,{schema}),{provider:'sqlite',schema,transaction:false}),
@@ -70,8 +75,30 @@ export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>vo
   session:{expiresIn:WEEK/1000,disableSessionRefresh:true,freshAge:RECENT/1000,cookieCache:{enabled:false}},
   advanced:{useSecureCookies:config.secure,cookiePrefix:'yourfeed',defaultCookieAttributes:{httpOnly:true,secure:config.secure,sameSite:'lax',path:'/'}},
   trustedOrigins:[config.origin],onAPIError:{errorURL:config.origin+'/login'},rateLimit:{enabled:false},logger:{disabled:true},
-  account:{encryptOAuthTokens:true,accountLinking:{enabled:true,trustedProviders:[],requireLocalEmailVerified:true,allowDifferentEmails:false,disableImplicitLinking:true}},
-  user:{changeEmail:{enabled:false},deleteUser:{enabled:false},validateUserInfo:async({user})=>ownerIdentityAllowed(env,user)?undefined:{error:'OWNER_ONLY',errorDescription:'此实例仅允许已验证的所有者邮箱登录。'}},
+  hooks:{before:createAuthMiddleware(async context=>{
+   if((context.path==='/sign-in/social'||context.path==='/link-social')&&context.body?.provider==='facebook')await addOAuthServerContext({ownerSocialProvider:'facebook',ownerSocialAction:context.path==='/link-social'?'link':'sign-in'});
+  })},
+  // The library calls this list "trusted": here it only permits explicit
+  // Facebook linking despite its unverified email. The hook below authenticates
+  // the local owner instead; implicit linking and Facebook signup remain off.
+  account:{encryptOAuthTokens:true,accountLinking:{enabled:true,trustedProviders:['facebook'],requireLocalEmailVerified:true,allowDifferentEmails:false,disableImplicitLinking:true}},
+  user:{changeEmail:{enabled:false},deleteUser:{enabled:false},validateUserInfo:async({user,source},context)=>{
+   const denied={error:'OWNER_ONLY',errorDescription:'此实例仅允许已验证的所有者邮箱登录。'};
+   if(source.method!=='oauth'||source.oauth?.providerId!=='facebook')return ownerIdentityAllowed(env,user)?undefined:denied;
+   if(source.action==='create-user'||typeof user.id!=='string'||typeof user.email!=='string'||normalizeOwnerEmail(user.email)!==config.owner)return denied;
+   const profile=source.oauth.profile,subject=profile?.id??profile?.sub;
+   if(typeof subject!=='string'||!/^\d{1,128}$/.test(subject)||(profile?.id!==undefined&&profile?.sub!==undefined&&profile.id!==profile.sub))return denied;
+   const state=await getOAuthState();
+   if(state?.serverContext?.ownerSocialProvider!=='facebook'||state.serverContext.ownerSocialAction!==(source.action==='link-account'?'link':'sign-in'))return denied;
+   const stored=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(user.id).first<{email:string;email_verified:number}>();
+   if(!stored||!ownerIdentityAllowed(env,{email:stored.email,emailVerified:!!stored.email_verified}))return denied;
+   if(source.action==='link-account'){
+    if(!context.request)return denied;
+    try{const owner=await requireRecentAuth(context.request,env);return owner.id===user.id?undefined:denied;}catch{return denied;}
+   }
+   const linked=await env.DB.prepare('SELECT id FROM auth_account WHERE provider_id=? AND account_id=? AND user_id=?').bind('facebook',subject,user.id).first();
+   return linked?undefined:denied;
+  }},
   databaseHooks:{user:{create:{before:async user=>{if(!ownerIdentityAllowed(env,user))return false;return {data:user};}}},session:{create:{before:async session=>{const user=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(session.userId).first<{email:string;email_verified:number}>();return user&&ownerIdentityAllowed(env,{email:user.email,emailVerified:!!user.email_verified})?{data:session}:false;}}}},
   verification:{storeInDatabase:true,storeIdentifier:{hash:identifier=>authHmac(env,'verification:'+identifier)}},
   plugins:[emailOTP({otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||normalizeOwnerEmail(email)!==config.owner)throw new HttpError(403,'此登录方式不可用。');try{await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}catch(error){const failure=error instanceof MailFailure?error:new MailFailure('sending_unavailable','验证码发送暂时不可用，请稍后重试。');onMailFailure?.(failure);/* Better Auth deliberately swallows send-hook errors. Remove only this unsent code and propagate through the request-scoped observer. */await env.DB.prepare('DELETE FROM auth_verification WHERE identifier=? AND value=?').bind(await authHmac(env,'verification:sign-in-otp-'+normalizeOwnerEmail(email)),(await authHmac(env,'otp:'+otp))+':0').run();throw failure;}}})],
@@ -98,9 +125,20 @@ export async function resolveSession(request:Request,env:Env):Promise<AuthSessio
 export async function requireUser(request:Request,env:Env):Promise<AuthSession['user']>{const session=await resolveSession(request,env);if(!session)throw new HttpError(401,'请先登录你的私人实例。');return session.user;}
 export async function requireRecentAuth(request:Request,env:Env):Promise<AuthSession['user']>{const session=await resolveSession(request,env);if(!session)throw new HttpError(401,'请先登录你的私人实例。');if(authMode(env)==='sites')return session.user;if(Date.now()-session.session.createdAt.getTime()>RECENT)throw new HttpError(401,'请重新登录后再修改敏感设置。');return session.user;}
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
+const OAUTH_FAILURE_CODES=new Set(['account_not_linked','OWNER_ONLY','unable_to_link_account','email_does_not_match','invalid_code','state_mismatch','state_not_found','state_security_mismatch','state_invalid','unable_to_get_user_info','signup_disabled','access_denied','invalid_callback_request','provider_not_found','no_code','user_not_found','account_already_linked_to_different_user','unable_to_create_user']);
+/** Keep fixed operational codes only: callback parameters and provider text can contain secrets. */
+async function oauthCallbackResult(env:Env,result:Response,origin:string,provider:string):Promise<Response>{
+ const location=result.headers.get('location');if(!location)return result;
+ let destination:URL;try{destination=new URL(location,origin);}catch{return result;}
+ if(destination.origin!==origin||destination.pathname!=='/login'||!destination.searchParams.has('error'))return result;
+ const supplied=destination.searchParams.get('error')||'',code=OAUTH_FAILURE_CODES.has(supplied)?supplied:'oauth_failed';
+ try{await env.DB.prepare('INSERT INTO meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('auth:oauth:last-attempt',JSON.stringify({at:new Date().toISOString(),provider,code})).run();}catch{/* Optional diagnostics cannot affect sign-in. */}
+ const safe=new URL('/login',origin);safe.searchParams.set('error',code);safe.searchParams.set('provider',provider);
+ const headers=new Headers(result.headers);headers.set('Location',safe.toString());headers.set('Cache-Control','no-store');await result.body?.cancel();return new Response(null,{status:result.status,headers});
+}
 export function authCapabilities(env:Env){
  const mode=authMode(env);let configured=mode==='sites';try{if(mode==='standalone'){settings(env);configured=true;}}catch{}
- return {authMode:mode,configured,ownerOnly:true,emailOtp:configured&&mode==='standalone'&&!!value(env,'RESEND_API_KEY')&&!!(value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM')),google:configured&&mode==='standalone'&&!!value(env,'GOOGLE_CLIENT_ID')&&!!value(env,'GOOGLE_CLIENT_SECRET'),github:configured&&mode==='standalone'&&!!value(env,'GITHUB_CLIENT_ID')&&!!value(env,'GITHUB_CLIENT_SECRET'),sessionDays:7,recentAuthMinutes:10,otpExpiresSeconds:300,otpResendSeconds:60};
+ return {authMode:mode,configured,ownerOnly:true,emailOtp:configured&&mode==='standalone'&&!!value(env,'RESEND_API_KEY')&&!!(value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM')),google:configured&&mode==='standalone'&&!!value(env,'GOOGLE_CLIENT_ID')&&!!value(env,'GOOGLE_CLIENT_SECRET'),github:configured&&mode==='standalone'&&!!value(env,'GITHUB_CLIENT_ID')&&!!value(env,'GITHUB_CLIENT_SECRET'),facebook:configured&&mode==='standalone'&&!!value(env,'FACEBOOK_CLIENT_ID')&&!!value(env,'FACEBOOK_CLIENT_SECRET'),facebookRequiresLink:true,sessionDays:7,recentAuthMinutes:10,otpExpiresSeconds:300,otpResendSeconds:60};
 }
 export async function handleAuth(request:Request,env:Env):Promise<Response>{
  const path=new URL(request.url).pathname;
@@ -109,7 +147,7 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
  try{
   const config=settings(env),origin=new URL(request.url).origin;
   if(origin!==config.origin)throw new HttpError(403,'登录请求来源不匹配。');
-  const relative=path.slice('/api/auth'.length);const callback=/^\/callback\/(google|github)$/.test(relative);
+  const relative=path.slice('/api/auth'.length);const callback=/^\/callback\/(google|github|facebook)$/.test(relative);
   const allowed=new Set(['/email-otp/send-verification-otp','/sign-in/email-otp','/sign-in/social','/link-social','/sign-out','/revoke-sessions']);
   if(!allowed.has(relative)&&!callback)return json({error:'登录接口不存在。'},404);
   if(!callback){if(request.method!=='POST')return json({error:'请求方法不支持。'},405);if(request.headers.get('origin')!==config.origin||!request.headers.get('content-type')?.includes('application/json'))throw new HttpError(403,'请从本站页面发起登录请求。');}
@@ -129,7 +167,7 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
    if(normalizeOwnerEmail(body.email)!==config.owner)throw new HttpError(400,'验证码无效或已过期。');
   }
   if(relative==='/sign-in/social'||relative==='/link-social'){
-   if(body.provider!=='google'&&body.provider!=='github')throw new HttpError(400,'请选择已启用的登录方式。');
+   if(body.provider!=='google'&&body.provider!=='github'&&body.provider!=='facebook')throw new HttpError(400,'请选择已启用的登录方式。');
    if(!authCapabilities(env)[body.provider])throw new HttpError(503,'此社交登录尚未配置。');
    if(body.callbackURL!==undefined&&body.callbackURL!=='/')throw new HttpError(400,'登录完成后仅允许返回本站首页。');
    if(!await consumeAuthRate(env,'social-ip',ip(request),20,600))throw new HttpError(429,'请求过于频繁，请稍后再试。');
@@ -139,6 +177,7 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
   let mailFailure:MailFailure|undefined;const auth=createOwnerAuth(env,failure=>{mailFailure=failure;});const result=await auth.handler(forwarded);
   // Native runInBackgroundOrAwait awaits but catches hook errors; never report successful sending after rejection.
   if(mailFailure){await result.body?.cancel();throw mailFailure;}
+  if(callback&&result.status>=300&&result.status<400)return oauthCallbackResult(env,result,config.origin,relative.slice('/callback/'.length));
   if(result.status>=400){if(relative==='/sign-in/email-otp'&&result.status<500&&result.status!==429)return json({error:'验证码无效或已过期。'},400);return json({error:result.status===429?'请求过于频繁，请稍后重试。':'登录未完成，请检查验证码、邮箱或登录服务配置。'},result.status);}
   // Sign-in session token stays in the HttpOnly cookie; never copy it into browser-readable JSON.
   if(relative==='/sign-in/email-otp'){const headers=new Headers(result.headers);headers.set('Content-Type','application/json');headers.set('Cache-Control','no-store');await result.body?.cancel();return new Response(JSON.stringify({success:true}),{status:result.status,headers});}

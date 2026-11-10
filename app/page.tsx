@@ -1,7 +1,7 @@
 'use client';
 import { branding } from '../data/branding';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, ArrowRight, Bookmark, BookOpen, Check, CheckCheck, ChevronDown, ChevronRight, Clock3, Code2, Compass, ExternalLink, Eye, EyeOff, FileText, GitFork, Globe2, GraduationCap, Heart, History, House, KeyRound, Leaf, Link2, Loader2, Menu, MessageSquare, Newspaper, Plus, RefreshCw, Rss, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Video, X, Zap } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Bookmark, BookOpen, Check, CheckCheck, ChevronDown, ChevronRight, Clock3, Code2, Compass, ExternalLink, Eye, EyeOff, FileText, GitFork, Globe2, GraduationCap, Heart, History, House, KeyRound, Leaf, Link2, Loader2, Menu, MessageSquare, Newspaper, Plus, RefreshCw, Rss, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Shuffle, Trash2, Video, X, Zap } from 'lucide-react';
 import ThemeToggle from './components/ThemeToggle';
 import AccountMenu from './components/AccountMenu';
 import SettingsPanel, { type Settings } from './components/AiSettings';
@@ -13,6 +13,9 @@ import DeploymentSettings from './components/DeploymentSettings';
 import { createProfile, type UserProfile } from '../shared/profile';
 import type { ContentItem, Feedback, FeedResponse, Kind, Mode, Provider, ProviderConfig, Source, Topic, Usage } from '../shared/types';
 type View = 'feed' | 'saved' | 'liked' | 'read' | 'sources' | 'settings';
+type FeedPage=FeedResponse&{nextCursor?:number|null;exhausted?:boolean;seed?:string;asOf?:string};
+type RotationContext={scope:string;seed:string;excludeIds:string[];asOf?:string};
+function rememberFeedIds(previous:string[],next:string[]){const added=[...new Set(next)];const ids=new Set(added);return [...previous.filter(id=>!ids.has(id)),...added].slice(-200);}
 const kinds: {
     id: 'all' | Kind;
     label: string;
@@ -48,6 +51,8 @@ export default function Home() {
     const { language, t } = useI18n();
     const [profile, setProfile] = useState<UserProfile>(() => createProfile('explorer', 'zh'));
     const [settingsTab, setSettingsTab] = useState<'profile' | 'ai' | 'domain'>('profile');
+    const [sourceImportText, setSourceImportText] = useState('');
+    const [sourceChatText, setSourceChatText] = useState('');
     const [briefingRevision, setBriefingRevision] = useState(0);
     const [view, setView] = useState<View>('feed');
     const [mode, setMode] = useState<Mode>('rest');
@@ -59,6 +64,7 @@ export default function Home() {
     const [cursor, setCursor] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [shuffling,setShuffling]=useState(false);
     const [error, setError] = useState('');
     const [sources, setSources] = useState<Source[]>([]);
     const [lastUpdated, setLastUpdated] = useState<string>();
@@ -79,8 +85,15 @@ export default function Home() {
     const autoSync = useRef(false);
     const active = useRef(true);
     const latestRequest = useRef(0);
+    const feedAbort=useRef<AbortController|null>(null);
+    const feedBusy=useRef(false);
+    const rotation=useRef<RotationContext|null>(null);
+    const recentShown=useRef<{scope:string;ids:string[]}>({scope:'',ids:[]});
+    const skipAutomaticFeedWork=useRef(false);
+    const feedScope=JSON.stringify([view,mode,kind,search,language]);
+    const currentFeedScope=useRef(feedScope);currentFeedScope.current=feedScope;
     const notify = useCallback((value: string) => setToast(value), []);
-    useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+    useEffect(() => { active.current = true; return () => { active.current = false;feedAbort.current?.abort();latestRequest.current++; }; }, []);
     useEffect(() => { if (!toast)
         return; const id = setTimeout(() => setToast(''), 5000); return () => clearTimeout(id); }, [toast]);
     useEffect(() => { const id = setTimeout(() => setSearch(query), 250); return () => clearTimeout(id); }, [query]);
@@ -93,40 +106,52 @@ export default function Home() {
         setUsage(result[2].value); if (result[3].status === 'fulfilled')
         setProfile(result[3].value); }, []);
     const loadFeed = useCallback(async (append = false) => {
-        const requestId = ++latestRequest.current;
-        append ? setLoadingMore(true) : setLoading(true);
-        setError('');
-        try {
-            const filter = view === 'saved' || view === 'liked' || view === 'read' ? view : 'all';
-            const offset = append ? (cursor || 0) : 0;
-            const data = await api<FeedResponse & {
-                nextCursor?: number | null;
-            }>(`/api/feed?mode=${mode}&type=${kind}&filter=${filter}&cursor=${offset}&q=${encodeURIComponent(search)}`);
-            if (!active.current || requestId !== latestRequest.current)
-                return;
-            setItems(previous => append ? [...previous, ...data.items.filter(x => !previous.some(p => p.id === x.id))] : data.items);
-            setTotal(data.total);
-            setCursor(data.nextCursor !== undefined ? data.nextCursor : null);
-            setLastUpdated(data.lastUpdated);
-        }
-        catch (e) {
-            if (active.current && requestId === latestRequest.current)
-                setError((e as Error).message);
-        }
-        finally {
-            if (active.current && requestId === latestRequest.current) {
-                setLoading(false);
-                setLoadingMore(false);
-            }
-        }
-    }, [view, mode, kind, search, cursor, language]);
-    const feedLoader = useRef(loadFeed);
-    feedLoader.current = loadFeed;
-    useEffect(() => { if (view === 'sources' || view === 'settings')
-        return; void feedLoader.current(false); }, [view, mode, kind, search, language]);
+        if(append&&feedBusy.current)return;
+        const requestId=++latestRequest.current;
+        feedAbort.current?.abort();const controller=new AbortController();feedAbort.current=controller;feedBusy.current=true;
+        if(!append)setShuffling(false);
+        append?setLoadingMore(true):setLoading(true);setError('');
+        try{
+            const filter=view==='saved'||view==='liked'||view==='read'?view:'all';
+            const offset=append?(cursor||0):0;
+            const context=view==='feed'&&rotation.current?.scope===feedScope?rotation.current:null;
+            const data=context
+                ?await api<FeedPage>('/api/feed/batch',{...post({mode,type:kind,filter:'all',q:search.slice(0,200),cursor:offset,seed:context.seed,excludeIds:context.excludeIds,...(context.asOf?{asOf:context.asOf}:{})}),signal:controller.signal})
+                :await api<FeedPage>(`/api/feed?mode=${mode}&type=${kind}&filter=${filter}&cursor=${offset}&q=${encodeURIComponent(search)}`,{signal:controller.signal});
+            if(!active.current||requestId!==latestRequest.current||feedScope!==currentFeedScope.current)return;
+            setItems(previous=>append?[...previous,...data.items.filter(item=>!previous.some(old=>old.id===item.id))]:data.items);
+            recentShown.current={scope:feedScope,ids:rememberFeedIds(recentShown.current.scope===feedScope?recentShown.current.ids:[],data.items.map(item=>item.id))};
+            setTotal(data.total);setCursor(data.nextCursor??null);setLastUpdated(data.lastUpdated);
+            if(context&&data.asOf)rotation.current={...context,asOf:data.asOf};
+        }catch(cause){if(active.current&&requestId===latestRequest.current&&feedScope===currentFeedScope.current&&!controller.signal.aborted)setError((cause as Error).message);}
+        finally{if(active.current&&requestId===latestRequest.current){feedBusy.current=false;setLoading(false);setLoadingMore(false);setShuffling(false);}}
+    },[view,mode,kind,search,cursor,language,feedScope]);
+    const feedLoader=useRef(loadFeed);feedLoader.current=loadFeed;
+    useEffect(()=>{
+        latestRequest.current++;feedAbort.current?.abort();feedBusy.current=false;rotation.current=null;recentShown.current={scope:feedScope,ids:[]};skipAutomaticFeedWork.current=false;setShuffling(false);setLoadingMore(false);
+        if(view==='sources'||view==='settings'){setLoading(false);return;}
+        void feedLoader.current(false);
+    },[feedScope]);
+    const shuffleFeed=async()=>{
+        if(view!=='feed'||feedBusy.current||loading||loadingMore||syncing)return;
+        feedBusy.current=true;skipAutomaticFeedWork.current=true;setShuffling(true);
+        const requestId=++latestRequest.current;feedAbort.current?.abort();const controller=new AbortController();feedAbort.current=controller;
+        const excludeIds=rememberFeedIds(recentShown.current.scope===feedScope?recentShown.current.ids:[],items.map(item=>item.id));
+        try{
+            const context:RotationContext={scope:feedScope,seed:crypto.randomUUID(),excludeIds};
+            const data=await api<FeedPage>('/api/feed/batch',{...post({mode,type:kind,filter:'all',q:search.slice(0,200),cursor:0,seed:context.seed,excludeIds}),signal:controller.signal});
+            if(!active.current||requestId!==latestRequest.current||feedScope!==currentFeedScope.current)return;
+            const excluded=new Set(excludeIds);const next=data.items.filter(item=>!excluded.has(item.id));
+            if(!next.length){notify(t('暂时没有不同的内容了。可以更新来源，或换个筛选再试。','No different items are available right now. Update sources or try another filter.'));return;}
+            rotation.current={...context,seed:data.seed||context.seed,asOf:data.asOf};
+            recentShown.current={scope:feedScope,ids:rememberFeedIds(excludeIds,next.map(item=>item.id))};
+            setItems(next);setTotal(data.total);setCursor(data.nextCursor??null);setLastUpdated(data.lastUpdated);setError('');
+        }catch(cause){if(active.current&&requestId===latestRequest.current&&feedScope===currentFeedScope.current&&!controller.signal.aborted)notify(t('暂时未能换一批，当前内容已保留，请稍后重试。','The next batch could not be loaded. Your current items are retained; try again later.'));}
+        finally{if(active.current&&requestId===latestRequest.current){feedBusy.current=false;setShuffling(false);}}
+    };
     useEffect(() => { void loadSidebar(); }, [loadSidebar]);
     const refresh = useCallback(async (force = true) => { if (syncing)
-        return; setSyncing(true); setSyncText(t('正在检查内容源…')); try {
+        return; rotation.current=null;skipAutomaticFeedWork.current=false;setSyncing(true); setSyncText(t('正在检查内容源…')); try {
         let processed = 0;
         let pending = 0;
         for (let batch = 0; batch < 35; batch++) {
@@ -155,7 +180,7 @@ export default function Home() {
             setSyncText('');
         }
     } }, [syncing, loadSidebar, notify]);
-    useEffect(() => { if (loading || error || autoSync.current || view !== 'feed')
+    useEffect(() => { if (skipAutomaticFeedWork.current || loading || error || autoSync.current || view !== 'feed')
         return; autoSync.current = true; if (!lastUpdated || Date.now() - new Date(lastUpdated).getTime() > 6 * 3600000)
         void refresh(false); }, [loading, error, lastUpdated, view, refresh]);
     useEffect(() => { if (!selected && !importing)
@@ -174,7 +199,7 @@ export default function Home() {
             first.focus();
         }
     } }; document.addEventListener('keydown', close); return () => { document.body.style.overflow = original; document.removeEventListener('keydown', close); previousFocus?.focus(); }; }, [selected, importing]);
-    useEffect(() => { if (autoAnalyze.current || loading || syncing || view !== 'feed' || !settings.enabled || !settings.configured)
+    useEffect(() => { if (skipAutomaticFeedWork.current || autoAnalyze.current || loading || syncing || view !== 'feed' || !settings.enabled || !settings.configured)
         return; autoAnalyze.current = true; void (async () => { let count = 0; try {
         const maximum = Math.min(100, Math.max(0, settings.dailyLimit - (usage.analyzedToday || 0)));
         for (let i = 0; i < maximum && active.current; i++) {
@@ -286,18 +311,22 @@ export default function Home() {
     <div className="workspace">
       <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" onClick={() => setMobileNav(true)} aria-label={t("\u6253\u5F00\u5BFC\u822A")}><Menu size={20}/></button><span>{t("\u6211\u7684\u7A7A\u95F4")}</span><ChevronRight size={13}/><strong>{view === 'sources' ? t('内容来源') : view === 'settings' ? t('偏好与 AI 设置') : view === 'saved' ? t('稍后再看') : view === 'liked' ? t('我喜欢的') : view === 'read' ? t('阅读足迹') : t('为你发现')}</strong></div><div className="topbar-actions"><LanguageToggle /><ThemeToggle /><AccountMenu /><button className="small-button add-button" onClick={() => setImporting(true)}><Plus size={15}/><span>{t("\u6536\u85CF\u94FE\u63A5")}</span></button></div></header>
       <main className={view === 'settings' || view === 'sources' ? 'main-area full-width' : 'main-area'}>
-        {view === 'settings' ? <section className="settings-container"><nav className="settings-tabs" aria-label={t('设置分类', 'Settings sections')}>{([{ id: 'profile', zh: t('我的偏好'), en: 'My profile' }, { id: 'ai', zh: t('AI 与接口'), en: 'AI & APIs' }, { id: 'domain', zh: t('部署与域名'), en: 'Deployment & domain' }] as const).map(tab => <button key={tab.id} type="button" onClick={() => setSettingsTab(tab.id)} className={settingsTab === tab.id ? 'selected' : ''}>{t(tab.zh, tab.en)}</button>)}</nav>{settingsTab === 'profile' ? <ProfileSettings profile={profile} onChange={setProfile} notify={notify}/> : settingsTab === 'ai' ? <SettingsPanel settings={settings} onChange={setSettings} usage={usage} notify={notify} reload={loadSidebar}/> : <DeploymentSettings />}</section> : view === 'sources' ? <SourceSettings sources={sources} syncing={syncing} syncText={syncText} onSync={() => void refresh(true)} onImport={() => setImporting(true)} reload={loadSidebar} notify={notify}/> : <>
+        {view === 'settings' ? <section className="settings-container"><div className="settings-section-picker"><div className="settings-picker-heading"><h2 id="settings-section-label">{t('选择设置分类','Choose a settings section')}</h2><p>{t('点选下方卡片，管理你的偏好、模型或网站。','Choose a card to manage your preferences, AI models, or site.')}</p></div><nav className="settings-tabs" aria-labelledby="settings-section-label">{([
+          {id:'profile',label:t('我的偏好','My profile'),description:t('目标、兴趣与语言','Goals, interests, and language'),icon:SlidersHorizontal},
+          {id:'ai',label:t('AI 与接口','AI & APIs'),description:t('密钥、模型与用量','API keys, models, and usage'),icon:KeyRound},
+          {id:'domain',label:t('部署与域名','Deployment & domain'),description:t('实例地址与域名验证','Site address and domain verification'),icon:Globe2},
+        ] as const).map(tab=>{const Icon=tab.icon;const active=settingsTab===tab.id;return <button key={tab.id} type="button" onClick={()=>setSettingsTab(tab.id)} className={active?'selected':''} aria-pressed={active}><span className="settings-tab-top"><span className="settings-tab-icon"><Icon size={22} aria-hidden="true"/></span><span className={`settings-tab-state ${active?'current':''}`}>{active?<><Check size={12} aria-hidden="true"/>{t('当前','Current')}</>:<ChevronRight size={18} aria-hidden="true"/>}</span></span><span className="settings-tab-copy"><strong>{tab.label}</strong><span>{tab.description}</span></span></button>;})}</nav></div>{settingsTab === 'profile' ? <ProfileSettings profile={profile} onChange={setProfile} notify={notify}/> : settingsTab === 'ai' ? <SettingsPanel settings={settings} onChange={setSettings} usage={usage} notify={notify} reload={loadSidebar}/> : <DeploymentSettings />}</section> : view === 'sources' ? <SourceSettings sources={sources} syncing={syncing} syncText={syncText} onSync={() => void refresh(true)} onImport={() => setImporting(true)} reload={loadSidebar} notify={notify} aiConfigured={!!settings.configured} onOpenAiSettings={() => { setSettingsTab('ai'); navigate('settings'); }} importText={sourceImportText} onImportTextChange={setSourceImportText} chatText={sourceChatText} onChatTextChange={setSourceChatText}/> : <>
           <section className="main-column">
             <div className="welcome-eyebrow"><span className="amber-dash"/>{view === 'feed' ? 'CURATED FOR YOUR CURIOSITY' : 'A LITTLE COLLECTION OF YOU'}</div>
             <div className="hero-heading"><div><h1>{t(pageTitle)}</h1><p>{view === 'feed' ? (mode === 'rest' ? t('从一个有趣的视频、一篇好文章开始。享受这段属于你的时间。') : t('从真实的问题出发，积累能带到下一阶段的知识与经验。')) : t('把有价值的发现留下来，随时回来接着看。')}</p></div><span className="hero-asterisk">✳</span></div>
-            <div className="discovery-controls"><div className="mode-switch"><button className={mode === 'rest' ? 'selected' : ''} onClick={() => setMode('rest')}><Leaf size={15}/>{t("\u4F11\u606F\u4E00\u4E0B")}</button><button className={mode === 'grow' ? 'selected' : ''} onClick={() => setMode('grow')}><GraduationCap size={16}/>{t("\u60F3\u5B66\u4E00\u70B9")}</button></div><button className={`refresh-button ${syncing ? 'spinning' : ''}`} onClick={() => void refresh(true)} disabled={syncing}><RefreshCw size={14}/>{syncing ? t('正在更新') : t('更新内容')}</button></div>
+            <div className="discovery-controls"><div className="mode-switch"><button className={mode === 'rest' ? 'selected' : ''} onClick={() => setMode('rest')}><Leaf size={15}/>{t("\u4F11\u606F\u4E00\u4E0B")}</button><button className={mode === 'grow' ? 'selected' : ''} onClick={() => setMode('grow')}><GraduationCap size={16}/>{t("\u60F3\u5B66\u4E00\u70B9")}</button></div><div className="feed-update-actions">{view==='feed'&&<button type="button" className="shuffle-button" onClick={()=>void shuffleFeed()} disabled={loading||loadingMore||syncing||shuffling} title={t('从已缓存的内容中换一批，不更新来源、不调用 AI，也不改变已读或兴趣反馈。','Show another batch from cached items. No source updates, AI calls, or reading/preference changes.')} aria-busy={shuffling}>{shuffling?<Loader2 size={16} className="spin"/>:<Shuffle size={17}/>}<span>{shuffling?t('正在换一批…','Finding another batch…'):t('换一批','Another batch')}</span></button>}<button type="button" className={`refresh-button ${syncing ? 'spinning' : ''}`} onClick={() => void refresh(true)} disabled={syncing||shuffling}><RefreshCw size={14}/>{syncing?t('正在更新','Updating…'):t('更新来源','Update sources')}</button></div></div>
             {view === 'feed' && <DailyBriefing revision={briefingRevision} onOpen={setSelected} onNews={() => { setKind('news'); setQuery(''); setSearch(''); }}/>}
             {view === 'feed' && !loading && !error && !items.length && !sources.length && <ProfileOnboarding profile={profile} onChange={setProfile} notify={notify} onSources={() => navigate('sources')} onSettings={() => { setSettingsTab('ai'); navigate('settings'); }}/>}
             <div className="feed-toolbar"><div className="kind-tabs">{kinds.map(({ id, label }) => <button key={id} className={kind === id ? 'selected' : ''} onClick={() => setKind(id)}>{t(label)}</button>)}</div><button className="filter-button" onClick={() => document.getElementById('feed-search')?.focus()} aria-label={t("\u641C\u7D22\u5185\u5BB9")}><Search size={17}/></button></div>
-            <div className="search-row"><Search size={15}/><input id="feed-search" placeholder={t("\u5728\u4F60\u7684\u5185\u5BB9\u82B1\u56ED\u91CC\u641C\u7D22\u2026")} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button className="icon-button" aria-label={t("\u6E05\u9664\u641C\u7D22")} onClick={() => setQuery('')}><X size={14}/></button>}<span className="result-count">{t(`${total} 条发现`)}</span></div>
+            <div className="search-row"><Search size={15}/><input id="feed-search" maxLength={200} placeholder={t("\u5728\u4F60\u7684\u5185\u5BB9\u82B1\u56ED\u91CC\u641C\u7D22\u2026")} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button className="icon-button" aria-label={t("\u6E05\u9664\u641C\u7D22")} onClick={() => setQuery('')}><X size={14}/></button>}<span className="result-count">{t(`${total} 条发现`)}</span></div>
             {(syncing || analysisProgress) && <div className="sync-line"><Loader2 className="spin" size={13}/><span>{syncing ? syncText : analysisProgress}</span><span className="sync-line-fill"/></div>}
             {error && <div className="error-box"><p>{t(error)}</p><button className="small-button" onClick={() => void loadFeed()}>{t("\u91CD\u65B0\u52A0\u8F7D")}</button></div>}
-            {loading && !items.length ? <div className="feed-grid">{[1, 2, 3, 4].map(i => <div className="skeleton-card" key={i}><div /><span /><span /><span /></div>)}</div> : items.length ? <><div className="section-kicker"><span>{view === 'feed' ? (mode === 'rest' ? t('今日的好奇心菜单') : t('值得投入的下一步')) : t('你的个人片库')}</span><span>{t("\u6309\u4E0E\u4F60\u7684\u5173\u8054\u63A8\u8350")}<Sparkles size={11}/></span></div><div className="feed-grid">{items.map((item, index) => <ContentCard key={item.id} item={item} index={index} onOpen={() => setSelected(item)} onFeedback={patch => void feedback(item, patch)}/>)}</div>{cursor !== null && <button className="load-more" onClick={() => void loadFeed(true)} disabled={loadingMore}>{loadingMore ? <Loader2 size={15} className="spin"/> : <Plus size={15}/>}{t("\u518D\u53D1\u73B0\u4E00\u4E9B\u597D\u5185\u5BB9")}</button>}<div className="feed-end"><span />{t("\u597D\u5185\u5BB9\u4E0D\u5FC5\u4E00\u6B21\u770B\u5B8C")}<span /></div></> : !error && <div className="empty-state"><div className="empty-icon"><Compass size={30}/></div><h2>{query ? t('暂时没有找到匹配内容') : view === 'saved' ? t('给下次休息，留一点期待') : view === 'liked' ? t('喜欢的内容会在这里相遇') : view === 'read' ? t('你的阅读足迹从这里开始') : t('你的内容花园，正在生长')}</h2><p>{query ? t('换个关键词，或者看看其他类型。') : view === 'feed' ? t('点击更新连接已启用的内容源，或先收藏一条你喜欢的链接。') : t('在内容卡片上保存、点赞或标记读过，即可在这里找到。')}</p><button className="primary-button" onClick={() => view === 'feed' ? void refresh(true) : navigate('feed')}>{view === 'feed' ? <RefreshCw size={15}/> : <ArrowRight size={15}/>} {view === 'feed' ? t('更新我的内容库') : t('去发现好内容')}</button></div>}
+            {loading && !items.length ? <div className="feed-grid">{[1, 2, 3, 4].map(i => <div className="skeleton-card" key={i}><div /><span /><span /><span /></div>)}</div> : items.length ? <><div className="section-kicker"><span>{view === 'feed' ? (mode === 'rest' ? t('今日的好奇心菜单') : t('值得投入的下一步')) : t('你的个人片库')}</span><span>{t("\u6309\u4E0E\u4F60\u7684\u5173\u8054\u63A8\u8350")}<Sparkles size={11}/></span></div><div className="feed-grid">{items.map((item, index) => <ContentCard key={item.id} item={item} index={index} onOpen={() => setSelected(item)} onFeedback={patch => void feedback(item, patch)}/>)}</div>{cursor !== null && <button className="load-more" onClick={() => void loadFeed(true)} disabled={loadingMore||loading||shuffling||syncing}>{loadingMore ? <Loader2 size={15} className="spin"/> : <Plus size={15}/>}{t("\u518D\u53D1\u73B0\u4E00\u4E9B\u597D\u5185\u5BB9")}</button>}<div className="feed-end"><span />{t("\u597D\u5185\u5BB9\u4E0D\u5FC5\u4E00\u6B21\u770B\u5B8C")}<span /></div></> : !error && <div className="empty-state"><div className="empty-icon"><Compass size={30}/></div><h2>{query ? t('暂时没有找到匹配内容') : view === 'saved' ? t('给下次休息，留一点期待') : view === 'liked' ? t('喜欢的内容会在这里相遇') : view === 'read' ? t('你的阅读足迹从这里开始') : t('你的内容花园，正在生长')}</h2><p>{query ? t('换个关键词，或者看看其他类型。') : view === 'feed' ? t('点击更新连接已启用的内容源，或先收藏一条你喜欢的链接。') : t('在内容卡片上保存、点赞或标记读过，即可在这里找到。')}</p><button className="primary-button" onClick={() => view === 'feed' ? void refresh(true) : navigate('feed')}>{view === 'feed' ? <RefreshCw size={15}/> : <ArrowRight size={15}/>} {view === 'feed' ? t('更新我的内容库') : t('去发现好内容')}</button></div>}
           </section>
           <aside className="right-column"><div className="today-date">{new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en', { timeZone: profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone, month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}<span className="green-dot"/></div><div className="intent-card"><span className="intent-icon">{mode === 'rest' ? <Leaf size={20}/> : <GraduationCap size={22}/>}</span><span className="micro-label">{t("\u6B64\u523B\uFF0C\u4E3A\u81EA\u5DF1")}</span><h3>{mode === 'rest' ? t('放松，也可以有收获。') : t('一点一滴，变得更有底气。')}</h3><p>{mode === 'rest' ? t('保留真实的兴趣，不急着把每一次好奇变成任务。') : t('根据你的目标和内容偏好，挑选值得投入的下一步。')}</p><div className="intent-bottom"><span>{t("\u7531\u4F60\u638C\u63A7\u7684\u63A8\u8350")}</span><Sparkles size={13}/></div></div>
             <div className="radar-panel"><div className="panel-title"><h3>{t("\u4F60\u7684\u5174\u8DA3\u96F7\u8FBE")}</h3><Compass size={15}/></div><p className="muted small">{t("\u8BA9\u719F\u6089\u7684\u5174\u8DA3\uFF0C\u4E5F\u9047\u89C1\u65B0\u53EF\u80FD\u3002")}</p><div className="interest-tags">{(Object.entries(profile.topicWeights || {}).filter(([,weight])=>(weight||0)>0).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 6).map(([key]) => key)).map((topic, i) => <button key={topic} onClick={() => { setQuery(t(topicNames[topic as Topic])); setKind('all'); }} className={i === 0 ? 'highlight' : ''}>{t(topicNames[topic as Topic])}</button>)}</div><div className="radar-caption"><span className="amber-dot"/>{t("\u6765\u6E90\u4E8E\u4F60\u7684\u8BA2\u9605\u3001Stars \u4E0E\u53CD\u9988")}</div></div>

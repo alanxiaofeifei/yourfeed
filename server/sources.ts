@@ -1,15 +1,24 @@
 import type {Source,Topic} from '../shared/types';
-import {listSources,listContent,updateSource,getState,setState,type Env} from './db';
+import {listSources,listContent,getState,setState,type Env} from './db';
 import {HttpError} from './security';
 import {canonicalUrl,plainText,resolveContentUrl,validatePublicUrl} from './fetch-safe';
 import type {PublicDnsResolver} from './provider-endpoint';
 const PLATFORMS=new Set<Source['platform']>(['youtube','bilibili','rss','github','x','web']);
 const TOPICS=new Set<Topic>(['ai','automation','network','linux','it','code','making','cooking','science','humanities','english','tools']);
 type SourceInput=Record<string,unknown>;
+export type SourceValidationMode='resolve-dns'|'url-only';
 function object(value:unknown):SourceInput{if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(400,'请提交有效的内容来源。');return value as SourceInput;}
 function sourceError(error:unknown):never{throw new HttpError(400,error instanceof Error?error.message:'内容来源格式不正确。');}
 function topics(value:unknown,old:Topic[]=[]):Topic[]{if(value===undefined)return old;if(!Array.isArray(value)||value.length>12||value.some(x=>typeof x!=='string'||!TOPICS.has(x as Topic)))throw new HttpError(400,'请选择有效的兴趣主题。');return [...new Set(value)] as Topic[];}
-export async function normalizeSourceInput(value:unknown,existing?:Source,resolver?:PublicDnsResolver):Promise<Omit<Source,'id'>>{
+/** Platform account identity is case-insensitive; channel IDs and feed paths are not. */
+export function sourceComparisonKey(source:Pick<Source,'platform'|'locator'>):string{
+ let locator=source.locator;
+ if(source.platform==='youtube'&&!/^UC[A-Za-z0-9_-]{22}$/.test(locator))locator=locator.normalize('NFC').replace(/^@/,'').toLowerCase();
+ if(source.platform==='github')locator=locator.toLowerCase();
+ if(source.platform==='x'){try{const url=new URL(locator);url.hostname='x.com';const account=url.pathname.match(/^\/([a-z\d_]{1,15})\/?$/i);if(account){url.pathname='/'+account[1].toLowerCase();url.search='';}else{url.pathname=url.pathname.replace(/^\/([a-z\d_]{1,15})(\/)/i,(_match,name:string,slash:string)=>'/'+name.toLowerCase()+slash);}locator=url.toString();}catch{if(/^@?[a-z\d_]{1,15}$/i.test(locator))locator='https://x.com/'+locator.replace(/^@/,'').toLowerCase();}}
+ return source.platform+'\n'+locator;
+}
+export async function normalizeSourceInput(value:unknown,existing?:Source,resolver?:PublicDnsResolver,validation:SourceValidationMode='resolve-dns'):Promise<Omit<Source,'id'>>{
  const input=object(value);const platform=input.platform===undefined?existing?.platform:input.platform;
  if(typeof platform!=='string'||!PLATFORMS.has(platform as Source['platform']))throw new HttpError(400,'请选择支持的内容来源类型。');
  if(input.enabled!==undefined&&typeof input.enabled!=='boolean')throw new HttpError(400,'来源启用状态必须为布尔值。');
@@ -29,7 +38,9 @@ export async function normalizeSourceInput(value:unknown,existing?:Source,resolv
    if(!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(locator)||locator.includes('--'))throw new Error('GitHub 用户名格式不正确。');locator=locator.toLowerCase();
   }else{
    if(platform==='x'&&!locator.startsWith('https://')){if(!/^@?[a-z\d_]{1,15}$/i.test(locator))throw new Error('请填写 X 用户名或帖子链接。');locator='https://x.com/'+locator.replace(/^@/,'');}
-   const u=existing?.platform===platform&&existing.locator===locator?validatePublicUrl(locator):await resolveContentUrl(locator,resolver);
+   // Bulk drafts/storage may defer DNS; every actual content request still goes
+   // through fetchSafe's public DNS validation, never through a fake resolver.
+   const u=validation==='url-only'||existing?.platform===platform&&existing.locator===locator?validatePublicUrl(locator):await resolveContentUrl(locator,resolver);
    if(platform==='x'&&!['x.com','www.x.com','twitter.com','www.twitter.com'].includes(u.hostname))throw new Error('X 来源需要使用 x.com 或 twitter.com 链接。');
    locator=canonicalUrl(u.toString());
   }
@@ -42,24 +53,30 @@ export async function normalizeSourceInput(value:unknown,existing?:Source,resolv
  if(platform==='x'||platform==='web')result.status='manual';
  return result;
 }
-export async function createSource(env:Env,value:unknown,resolver?:PublicDnsResolver):Promise<Source>{
- const input=object(value);const normalized=await normalizeSourceInput(input,undefined,resolver);const existing=await listSources(env);
- if(existing.some(s=>s.platform===normalized.platform&&s.locator===normalized.locator))throw new HttpError(409,'这个内容来源已经添加。');
+export async function createSource(env:Env,value:unknown,resolver?:PublicDnsResolver,validation:SourceValidationMode='resolve-dns'):Promise<Source>{
+ const input=object(value);const normalized=await normalizeSourceInput(input,undefined,resolver,validation);const existing=await listSources(env);
+ const identity=sourceComparisonKey(normalized);if(existing.some(s=>sourceComparisonKey(s)===identity))throw new HttpError(409,'这个内容来源已经添加。');
  if(existing.length>=200)throw new HttpError(400,'最多添加 200 个内容来源。');
  const source:Source={id:'source-'+crypto.randomUUID(),...normalized};if(typeof input.blocked==='boolean')(source as Source&{blocked?:boolean}).blocked=input.blocked;
- await updateSource(env,source);await setState(env,'sync-round-started','0');return source;
+ // D1 serializes the check and insert. Identity is independent from mutable
+ // source IDs; legacy rows were compared above and are never overwritten.
+ const inserted=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (SELECT COUNT(*) FROM sources)<200 AND NOT EXISTS (SELECT 1 FROM sources WHERE json_extract(json,'$._identityKey')=?)").bind(source.id,JSON.stringify({...source,_identityKey:identity}),identity).run();
+ if(inserted.meta.changes!==1){if((await listSources(env)).some(s=>sourceComparisonKey(s)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
+ await setState(env,'sync-round-started','0');return source;
 }
 export async function updateSourceInput(env:Env,value:unknown,resolver?:PublicDnsResolver):Promise<Source>{
  const input=object(value);if(typeof input.id!=='string'||input.id.length>200)throw new HttpError(400,'请指定内容来源。');
  let existing=(await listSources(env)).find(s=>s.id===input.id);
  if(!existing){const item=(await listContent(env)).find(i=>i.sourceId===input.id);if(!item)throw new HttpError(404,'内容来源不存在。');existing={id:item.sourceId,name:item.sourceName,platform:'web',locator:item.url,topics:item.topics,enabled:true,status:'manual'};}
  const normalized=await normalizeSourceInput(input,existing,resolver);
- const duplicates=await listSources(env);if(duplicates.some(s=>s.id!==existing!.id&&s.platform===normalized.platform&&s.locator===normalized.locator))throw new HttpError(409,'这个内容来源已经添加。');
+ const duplicates=await listSources(env);if(duplicates.some(s=>s.id!==existing!.id&&sourceComparisonKey(s)===sourceComparisonKey(normalized)))throw new HttpError(409,'这个内容来源已经添加。');
  const changed=existing.platform!==normalized.platform||existing.locator!==normalized.locator;
  const source:Source={...existing,...normalized,id:existing.id};
  if(changed){delete source.lastSuccess;delete source.error;source.status=normalized.status;delete (source as Source&{lastAttempt?:number}).lastAttempt;}
  if(typeof input.blocked==='boolean')(source as Source&{blocked?:boolean}).blocked=input.blocked;
- await updateSource(env,source);if(changed||input.enabled===true)await setState(env,'sync-round-started','0');return source;
+ const identity=sourceComparisonKey(normalized);const written=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (EXISTS (SELECT 1 FROM sources WHERE id=?) OR (SELECT COUNT(*) FROM sources)<200) AND NOT EXISTS (SELECT 1 FROM sources WHERE id<>? AND json_extract(json,'$._identityKey')=?) ON CONFLICT(id) DO UPDATE SET json=excluded.json").bind(source.id,JSON.stringify({...source,_identityKey:identity}),source.id,source.id,identity).run();
+ if(written.meta.changes!==1){if((await listSources(env)).some(item=>item.id!==source.id&&sourceComparisonKey(item)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
+ if(changed||input.enabled===true)await setState(env,'sync-round-started','0');return source;
 }
 export async function deleteSource(env:Env,id:unknown):Promise<void>{
  if(typeof id!=='string'||id.length>200)throw new HttpError(400,'请指定内容来源。');

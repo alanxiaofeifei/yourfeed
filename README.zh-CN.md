@@ -8,6 +8,10 @@
 
 **如何登录：**这个地址是仅所有者可访问的私人实例，不是公共演示站。只有该实例配置的所有者可以通过邮箱验证码登录；访客不能注册，也不能用自己的邮箱登录这个实例。想了解产品，可以先看[界面截图](#界面预览)，或通过下方按钮部署自己的实例，再使用你为该实例配置的 `OWNER_EMAIL` 登录。
 
+未收到登录验证码时，请检查**垃圾邮件**。找到邮件后标记为**「不是垃圾邮件」**，方便后续接收。
+
+只有实例完成相应配置后，才会显示 Google、GitHub 或 Facebook 按钮。Facebook 仅供**已绑定账户登录**：首次先用邮箱或其他已启用方式登录，验证身份后再从账户菜单绑定 Facebook。
+
 **项目灵感：**[Andrej Karpathy 关于 HackerTube 的原帖](https://x.com/karpathy/status/2116957135661945283)。YourFeed 将专属视频空间的想法，扩展为整合阅读、新闻、帖子与开源发现的个人首页。
 
 [![部署到 Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed)
@@ -27,9 +31,11 @@
 - 独立部署仅本人登录，API Key 在服务端加密；保留可选 ChatGPT Sites 适配层。
 - 域名向导检查公开 DNS、HTTPS 和当前实例，不收集 Cloudflare 管理令牌，不自动修改登录主地址。
 
+添加来源支持免费精选目录、AI 兴趣对话和可编辑的批量导入（链接、OPML、YouTube CSV、JSON）。推荐流的「换一批」会在当前筛选下避开最近内容，不触发 AI 或来源更新。参见[来源使用指南](docs/sources.md)、[社交登录配置指南](docs/authentication.md)与[大卡片设置导航预览](docs/screenshots/settings-sections.png)。
+
 ## 界面预览
 
-以下截图使用真实 React 界面，并明确标记为**演示内容**。示例新闻、内容源与所有者名称均为虚构展示数据，不是实时新闻或私人订阅。新部署不会预装这组演示内容。
+以下截图使用真实 React 界面，并明确标记为**演示内容**。示例新闻与所有者名称为虚构展示数据，不是实时新闻或私人资料。来源发现页展示真实的公开推荐目录，只是通用起点，不是某位所有者的订阅。新部署不会预装这组演示内容。
 
 部署按钮从本 GitHub 开源源码，在你自己的 Cloudflare 账户创建独立 Worker 和 D1 数据库。需要自行配置登录与 API Secrets；不会复制开发者的实例、数据库、密钥或个人数据。
 
@@ -41,9 +47,15 @@
 
 ![YourFeed 演示 AI 设置：空白密钥输入框与底部未保存提示](docs/screenshots/ai-settings.png)
 
-**管理自己的内容来源**
+**从新手推荐、AI 对话或已有清单开始**
 
-![YourFeed 演示来源管理：示例订阅与创作者](docs/screenshots/sources.png)
+可以从公开精选来源起步，用已配置的 AI 聊聊兴趣，预览批量订阅清单，或单条添加。只有确认后才会保存来源。
+
+![YourFeed 来源发现：精选推荐、AI 对话、批量导入和单条添加四个入口](docs/screenshots/sources.png)
+
+**清楚易读的本人登录页**
+
+![YourFeed 演示登录页：大字号、清晰按钮与垃圾邮件提醒](docs/screenshots/login.png)
 
 ## 适合谁？
 

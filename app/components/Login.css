@@ -1,1 +1,48 @@
-.login-shell{min-height:100dvh;background:var(--bg);color:inherit;padding:26px 34px 30px}.login-top{max-width:1200px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:20px}.login-top>div{display:flex;align-items:center;gap:10px}.login-brand{font-size:25px;font-weight:700;letter-spacing:-1px}.login-brand span{font-weight:400;color:var(--muted)}.login-card{max-width:440px;margin:7vh auto 0;border:1px solid var(--line);border-radius:16px;padding:34px;background:var(--surface);box-shadow:0 18px 70px #00000012}.login-symbol{width:52px;height:52px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:color-mix(in srgb,var(--amber) 10%,transparent);color:var(--amber);margin-bottom:22px}.login-eyebrow{font-size:8px;letter-spacing:1.8px;color:var(--muted)}.login-card h1{font-size:25px;line-height:1.5;font-weight:500;letter-spacing:-.6px;margin:12px 0}.login-description{font-size:12px;color:var(--muted);line-height:1.9;margin-bottom:27px}.login-card .form-label{display:flex;align-items:center;gap:6px}.login-card .form-input{width:100%;background:var(--bg);color:inherit;border:1px solid var(--line)}.login-card .primary-button{font-size:12px;min-height:44px}.login-socials{display:flex;gap:10px;margin-bottom:23px}.login-socials>button{flex:1;background:var(--bg);color:inherit;border-color:var(--line);min-height:40px}.login-loading{display:flex;align-items:center;justify-content:center;gap:8px;min-height:90px;color:var(--muted);font-size:12px}.login-code{font-variant-numeric:tabular-nums;letter-spacing:7px;font-size:18px!important}.login-resend{display:block;margin:16px auto 0;font-size:11px;color:var(--amber)}.login-help{font-size:10px;color:var(--muted);line-height:1.9;margin-top:17px}.login-security{font-size:9px;line-height:1.8;display:flex;align-items:center;gap:6px;color:var(--muted);border-top:1px solid var(--line);padding-top:20px;margin-top:27px}.login-message,.login-error{display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.8;padding:12px;border-radius:6px;margin-top:18px}.login-message{color:var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)}.login-error{color:var(--amber);background:color-mix(in srgb,var(--amber) 8%,transparent)}.login-message svg{flex-shrink:0;margin-top:3px}.login-setup-note{font-size:11px;color:var(--muted);line-height:1.9;background:var(--bg);border:1px solid var(--line);padding:18px;border-radius:8px}.login-setup-note>svg{color:var(--amber);margin-bottom:10px}.login-setup-note h2{font-size:14px;font-weight:500;color:inherit;margin-bottom:8px}.login-native{display:flex;justify-content:center;gap:8px}.login-footnote{text-align:center;color:var(--muted);font-size:10px;letter-spacing:.5px;margin-top:27px}@media(max-width:600px){.login-shell{padding:20px 18px}.login-brand{font-size:23px}.login-top>div{gap:7px}.login-card{margin-top:5vh;padding:27px 23px}.login-card h1{font-size:24px}.login-description{font-size:11px}.login-security{font-size:8px}.login-top .theme-toggle{padding:0 7px}}
+.login-shell{min-height:100dvh;background:var(--bg);color:inherit;padding:22px 28px 24px;font-size:19px;line-height:1.55}
+.login-top{max-width:1280px;width:100%;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.login-top>div{display:flex;align-items:center;gap:12px}
+.login-brand{font-size:36px;font-weight:700;letter-spacing:-1.3px;line-height:1.2}
+.login-brand span{font-weight:400;color:var(--muted)}
+.login-top .theme-toggle,.login-top .language-toggle{min-height:44px;height:auto;padding:9px 13px;font-size:14px;gap:8px}
+.login-top .theme-toggle svg{width:18px;height:18px}
+.login-card{width:min(100%,700px);margin:clamp(14px,3vh,28px) auto 0;border:1px solid var(--line);border-radius:18px;padding:28px 34px;background:var(--surface);box-shadow:0 18px 70px #00000012}
+.login-heading{display:flex;align-items:center;gap:16px}
+.login-heading>div:last-child{min-width:0}
+.login-symbol{width:56px;height:56px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:13px;background:color-mix(in srgb,var(--amber) 10%,transparent);color:var(--amber)}
+.login-symbol svg{width:30px;height:30px}
+.login-eyebrow{display:block;font-size:12px;line-height:1.5;letter-spacing:1.6px;color:var(--muted)}
+.login-card h1{font-size:clamp(36px,3.2vw,42px);line-height:1.18;font-weight:500;letter-spacing:-.8px;margin:7px 0 0;overflow-wrap:break-word}
+.login-description{font-size:19px;color:var(--muted);line-height:1.55;margin:16px 0 22px}
+.login-fields{display:grid;gap:0}
+.login-card .form-field{margin:0 0 18px;min-width:0}
+.login-card .form-label{display:flex;align-items:center;gap:8px;font-size:18px;line-height:1.5;margin-bottom:8px}
+.login-card .form-label svg{width:18px;height:18px}
+.login-card .form-input{width:100%;min-width:0;min-height:56px;padding:13px 16px;font-size:20px;line-height:1.4;background:var(--bg);color:inherit;border:1px solid var(--line);border-radius:8px}
+.login-card .form-input::placeholder{font-size:18px}
+.login-card .primary-button{font-size:20px;line-height:1.4;min-height:56px;padding:13px 22px;gap:10px;border-radius:8px;justify-content:center}
+.login-card .primary-button svg{width:21px;height:21px}
+.login-socials{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin-bottom:16px}
+.login-socials>button{min-width:0;white-space:normal;padding:12px;background:var(--bg);color:inherit;border-color:var(--line);min-height:52px;font-size:19px;justify-content:center}
+.login-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:var(--muted);font-size:19px}
+.login-code{font-variant-numeric:tabular-nums;letter-spacing:7px;font-size:24px!important}
+.login-resend{display:block;min-height:44px;margin:8px auto 0;padding:8px 10px;font-size:17px;line-height:1.5;color:var(--amber);text-align:center}
+.login-help{font-size:17px;color:var(--muted);line-height:1.5;margin:8px 0 0}
+.login-spam-hint{display:flex;align-items:flex-start;gap:9px;font-size:17px;line-height:1.5;color:var(--muted);margin:9px 0 0}
+.login-spam-hint svg{width:18px;height:18px;flex-shrink:0;margin-top:4px}
+.login-security{font-size:15px;line-height:1.6;display:flex;align-items:center;gap:8px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;margin-top:18px}
+.login-security svg{width:18px;height:18px;flex-shrink:0}
+.login-message,.login-error{display:flex;align-items:flex-start;gap:9px;font-size:18px;line-height:1.55;padding:13px 15px;border-radius:8px;margin-top:16px;overflow-wrap:anywhere}
+.login-message{color:var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)}
+.login-error{color:var(--amber);background:color-mix(in srgb,var(--amber) 8%,transparent)}
+.login-message svg{width:20px;height:20px;flex-shrink:0;margin-top:4px}
+.login-setup-note{font-size:18px;color:var(--muted);line-height:1.6;background:var(--bg);border:1px solid var(--line);padding:20px;border-radius:10px}
+.login-setup-note>svg{color:var(--amber);margin-bottom:10px}
+.login-setup-note h2{font-size:22px;font-weight:500;color:inherit;margin-bottom:8px}
+.login-native{display:flex;justify-content:center;gap:10px}
+.login-footnote{text-align:center;color:var(--muted);font-size:16px;letter-spacing:.3px;margin-top:16px}
+@media(min-width:621px){.login-fields.has-code{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px}.login-fields.has-code .login-help{font-size:16px}}
+@media(min-width:621px) and (max-height:820px){.login-shell{padding-top:16px;padding-bottom:18px}.login-card{width:min(100%,720px);margin-top:12px;padding:22px 30px}.login-symbol{width:50px;height:50px}.login-card h1{font-size:36px}.login-description{margin:12px 0 18px;font-size:18px}.login-card .form-field{margin-bottom:14px}.login-card .form-input{min-height:54px;padding-top:12px;padding-bottom:12px}.login-help,.login-spam-hint{font-size:16px}.login-security{margin-top:14px;padding-top:12px}.login-footnote{display:none}}
+@media(max-width:620px){.login-shell{padding:16px;font-size:18px}.login-top{gap:12px}.login-top>div{gap:8px}.login-brand{font-size:30px;letter-spacing:-1px}.login-top .theme-toggle,.login-top .language-toggle{min-height:44px;padding:8px 10px;font-size:13px;gap:6px}.login-top .language-toggle>span:first-child{display:none}.login-card{margin-top:18px;padding:24px 22px;border-radius:14px}.login-heading{gap:12px}.login-symbol{width:46px;height:46px;border-radius:11px}.login-symbol svg{width:27px;height:27px}.login-eyebrow{font-size:11px;letter-spacing:1px}.login-card h1{font-size:30px;line-height:1.25;letter-spacing:-.4px}.login-description{font-size:18px;line-height:1.55;margin:16px 0 20px}.login-card .form-label{font-size:17px}.login-card .form-input{font-size:18px;min-height:54px;padding:13px 14px}.login-card .form-input::placeholder{font-size:17px}.login-card .primary-button{font-size:18px;min-height:54px;padding:13px 16px}.login-socials>button{font-size:18px;min-height:50px}.login-help,.login-spam-hint{font-size:16px;line-height:1.55}.login-resend{font-size:16px}.login-security{font-size:14px;align-items:flex-start}.login-message,.login-error,.login-setup-note{font-size:17px}.login-footnote{font-size:15px;margin-top:15px}}
+@media(max-width:380px){.login-shell{padding:12px}.login-brand{font-size:28px}.login-top>div{gap:5px}.login-top .theme-toggle,.login-top .language-toggle{padding-left:8px;padding-right:8px}.login-card{padding:22px 18px}.login-heading{gap:10px}.login-card h1{font-size:29px}}
+
+.login-facebook{flex-direction:column;gap:2px}.login-facebook small{font-size:14px;line-height:1.4;color:var(--muted)}.login-social-help{font-size:17px;line-height:1.5;color:var(--muted);margin:-3px 0 18px}@media(max-width:620px){.login-social-help{font-size:16px}}

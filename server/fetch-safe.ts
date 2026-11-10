@@ -35,7 +35,7 @@ export function canonicalUrl(input:string):string{
  if(u.hostname==='twitter.com')u.hostname='x.com';
  return u.toString();
 }
-export async function fetchSafe(input:string, options:{headers?:Record<string,string>;maxBytes?:number;timeout?:number;resolver?:PublicDnsResolver}={}):Promise<{response:Response;text:string,url:string}>{
+export async function fetchSafe(input:string, options:{headers?:Record<string,string>;maxBytes?:number;timeout?:number;resolver?:PublicDnsResolver;maxRedirects?:number;sameOriginRedirects?:boolean}={}):Promise<{response:Response;text:string,url:string}>{
  let u=validatePublicUrl(input);
  const headers={'User-Agent':'Mozilla/5.0 (compatible; YourFeed/1.0; personal reader)',...options.headers};
  const credentialed=Object.keys(options.headers||{}).some(k=>CREDENTIAL_HEADER.test(k));
@@ -44,7 +44,8 @@ export async function fetchSafe(input:string, options:{headers?:Record<string,st
  if(credentialed&&(u.origin!=='https://www.googleapis.com'||!u.pathname.startsWith('/youtube/v3/')||Object.keys(options.headers||{}).some(k=>CREDENTIAL_HEADER.test(k)&&k.toLowerCase()!=='x-goog-api-key')))throw new Error('内容请求不允许携带账号凭据。');
  const timeout=Math.min(30000,Math.max(1000,options.timeout||12000));
  const signal=AbortSignal.timeout(timeout);
- for(let n=0;n<4;n++){
+ const maxRedirects=Math.min(3,Math.max(0,Math.floor(options.maxRedirects??3)));
+ for(let n=0;n<=maxRedirects;n++){
   u=await resolveContentUrl(u.toString(),options.resolver);
   const response=await fetch(u.toString(),{headers,redirect:'manual',signal});
   if(response.status>=300&&response.status<400){
@@ -52,6 +53,8 @@ export async function fetchSafe(input:string, options:{headers?:Record<string,st
    if(!location)throw new Error('来源返回了无效跳转。');
    const next=validatePublicUrl(new URL(location,u).toString());
    if(credentialed)throw new Error('带凭据的请求不允许跨站跳转或重定向。');
+   if(n>=maxRedirects)throw new Error('来源跳转过多。');
+   if(options.sameOriginRedirects&&next.origin!==u.origin)throw new Error('来源发现不允许跨站跳转。');
    u=next;continue;
   }
   if(!response.ok){await response.body?.cancel();throw new Error(`来源暂时无法读取（HTTP ${response.status}）。`);}
