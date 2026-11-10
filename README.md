@@ -45,7 +45,7 @@ The deploy button uses this GitHub source to create an independent Worker and D1
 
 **AI settings with a persistent Save and apply bar**
 
-![YourFeed demo AI settings with a blank API key field and visible unsaved-changes bar](docs/screenshots/ai-settings.png)
+![YourFeed demo AI settings with a blank API key field and visible Save and apply status bar](docs/screenshots/ai-settings.png)
 
 **Start with curated sources, an AI conversation, or your own list**
 
