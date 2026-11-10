@@ -8,6 +8,8 @@ A private home for videos, articles, news, saved posts and open-source projects.
 
 The button creates your own repository, Worker and D1 database. **Finish owner sign-in configuration before using the feed.** An unconfigured instance shows setup instructions and keeps private APIs closed. Google and GitHub sign-in are supported; email codes are optional. See the [deployment guide](docs/deployment.md).
 
+`OWNER_EMAIL` is **your own sign-in and code-recipient email**. `onboarding@resend.dev` is a test **sender**, never your owner address; it can send only to the email used to register your Resend account. Normal email use requires a verified sending domain. Store `RESEND_API_KEY` as a Cloudflare **Secret**, not Text. A successful send request means the provider accepted it, not that it reached your inbox; rejected requests are shown as errors.
+
 - One feed for video, reading, news, posts and projects; filters, saved items, history and source feedback.
 - English and Chinese UI, a personal onboarding profile, and three editable starting directions: IT & AI practice, developers & creators, and knowledge explorer.
 - RSS, public GitHub stars, YouTube metadata with your API key, best-effort Bilibili updates, and link imports.

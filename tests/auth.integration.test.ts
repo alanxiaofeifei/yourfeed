@@ -12,10 +12,11 @@ async function login(){expect((await send()).status).toBe(200);const response=aw
 beforeAll(async()=>{
  mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',d1Databases:{DB:'standalone-auth-test'},compatibilityDate:'2026-05-15'});
  env={DB:await mf.getD1Database('DB') as unknown as Env['DB'],AUTH_SECRET:'test-only-strong-auth-secret-1234567890-abcdefgh',OWNER_EMAIL:'owner@example.com',AUTH_BASE_URL:'https://yourfeed.example',RESEND_API_KEY:'test-only-mail-key',AUTH_EMAIL_FROM:'YourFeed <login@example.com>'};
+ await env.DB.exec('CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL)');
  for(const sql of readFileSync('drizzle/0001_auth.sql','utf8').split('--> statement-breakpoint').map(x=>x.trim()).filter(Boolean))await env.DB.exec(sql.replace(/\r?\n/g,' '));
 },60000);
 beforeEach(async()=>{
- await env.DB.batch(['auth_session','auth_account','auth_verification','auth_rate','auth_user'].map(t=>env.DB.prepare('DELETE FROM '+t)));code='';
+ await env.DB.batch(['auth_session','auth_account','auth_verification','auth_rate','auth_user','meta'].map(t=>env.DB.prepare('DELETE FROM '+t)));code='';
  vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{if(String(input)==='https://api.resend.com/emails'){const message=JSON.parse(String(init?.body));code=message.text.match(/\b(\d{6})\b/)[1];return new Response(JSON.stringify({id:'test-email'}),{status:200});}throw new Error('Unexpected network call');}));
 });
 afterAll(async()=>{vi.stubGlobal('fetch',originalFetch);await mf?.dispose();});
@@ -80,6 +81,30 @@ describe('standalone singleowner authentication',()=>{
   const request=req('/email-otp/send-verification-otp',{email:'owner@example.com',type:'sign-in'});request.headers.set('accept-language','zh-CN');
   expect((await handleAuth(request,env)).status).toBe(200);
   const fetchMock=vi.mocked(globalThis.fetch);const init=fetchMock.mock.calls[0][1];expect(JSON.parse(String(init?.body)).subject).toContain('登录验证码');
+ });
+
+ it.each([
+  {status:403,body:{name:'validation_error',message:'You can only send testing emails to your own email address: secret@example.com; secret-otp-123456; secret-api-key'},expected:'test_recipient_restricted'},
+  {status:403,body:{message:'The sender domain is not verified'},expected:'sender_unverified'},
+  {status:401,body:{message:'Invalid API key secret-api-key'},expected:'credentials_rejected'},
+ ])('does not report success when stock Better Auth swallows a mail rejection ($expected)',async({status,body,expected})=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(body),{status})));
+  const result=await send();expect(result.status).toBe(503);const response=await result.text();expect(response).toContain('AUTH_EMAIL_SEND_FAILED');expect(JSON.parse(response).reason).toBe(expected);
+  expect((await env.DB.prepare('SELECT COUNT(*) n FROM auth_verification').first<{n:number}>())?.n).toBe(0);
+  const metadata=await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind('auth:mail:last-attempt').first<{value:string}>();expect(JSON.parse(metadata!.value)).toMatchObject({stage:'provider_rejected',code:expected,upstreamStatus:status});
+  for(const sensitive of ['secret@example.com','secret-otp-123456','secret-api-key','owner@example.com']){expect(response).not.toContain(sensitive);expect(metadata!.value).not.toContain(sensitive);}
+ });
+ it('awaits the mail provider and returns a safe error for failed transport',async()=>{
+  let rejectFetch!:(reason:Error)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>((_,reject)=>{rejectFetch=reject;})));
+  let complete=false;const result=send().then(response=>{complete=true;return response;});
+  await vi.waitFor(()=>expect(rejectFetch).toBeTypeOf('function'));expect(complete).toBe(false);rejectFetch(new Error('secret-api-key secret@example.com'));
+  const response=await result;expect(response.status).toBe(503);expect(await response.text()).not.toContain('secret');expect((await env.DB.prepare('SELECT COUNT(*) n FROM auth_verification').first<{n:number}>())?.n).toBe(0);
+  const metadata=await env.DB.prepare('SELECT value FROM meta').first<{value:string}>();expect(JSON.parse(metadata!.value)).toMatchObject({stage:'network_error',code:'transport_unavailable'});
+ });
+ it('requires Resend acceptance evidence and records acceptance without claiming delivery',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('{}',{status:200})));expect((await send()).status).toBe(503);expect((await env.DB.prepare('SELECT COUNT(*) n FROM auth_verification').first<{n:number}>())?.n).toBe(0);
+  await env.DB.prepare('DELETE FROM auth_rate').run();vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({id:'test-email-accepted'}),{status:200})));expect((await send()).status).toBe(200);
+  const metadata=await env.DB.prepare('SELECT value FROM meta').first<{value:string}>();expect(JSON.parse(metadata!.value)).toMatchObject({stage:'accepted',messageId:'test-email-accepted'});expect(metadata!.value).not.toContain('owner@example.com');
  });
 
 });

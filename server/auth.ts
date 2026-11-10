@@ -36,12 +36,31 @@ export async function consumeAuthRate(env:Env,purpose:string,subject:string,limi
  return !!result;
 }
 function ip(request:Request):string {return (request.headers.get('cf-connecting-ip')||'unknown').slice(0,128);}
-async function sendMail(env:Env,email:string,otp:string,language:'zh'|'en'):Promise<void>{
- const key=value(env,'RESEND_API_KEY'),from=value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM');if(!key||!from)throw new HttpError(503,'邮箱验证码尚未启用，请配置 Resend 密钥和发件地址。');
- let result:Response;try{result=await fetch('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({from,to:[email],subject:language==='zh'?'YourFeed 登录验证码':'YourFeed sign-in code',text:language==='zh'?`你的 YourFeed 登录验证码：${otp}。5 分钟内有效。请勿向他人提供此验证码。如果不是你发起的请求，请忽略这封邮件。`:`Your YourFeed sign-in code is ${otp}. It expires in 5 minutes. Do not share this code. If you did not request it, you can ignore this email.`})});}catch{throw new HttpError(503,'验证码发送暂时不可用，请稍后重试。');}
- await result.body?.cancel();if(!result.ok)throw new HttpError(503,'验证码发送暂时不可用，请检查邮件服务配置。');
+type MailFailureReason='not_configured'|'transport_unavailable'|'test_recipient_restricted'|'sender_unverified'|'credentials_rejected'|'provider_rate_limited'|'provider_unavailable'|'sending_rejected'|'invalid_provider_response'|'sending_unavailable';
+type MailAttempt={at:string;provider:'resend';stage:'accepted'|'provider_rejected'|'network_error'|'invalid_response';code:MailFailureReason|'accepted';upstreamStatus?:number;messageId?:string};
+class MailFailure extends HttpError {constructor(public code:MailFailureReason,message:string){super(503,message);}}
+/** Operational metadata only. Never persist the recipient, OTP, provider body or credential. */
+async function recordMailAttempt(env:Env,attempt:Omit<MailAttempt,'at'|'provider'>):Promise<void>{
+ try{await env.DB.prepare('INSERT INTO meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('auth:mail:last-attempt',JSON.stringify({at:new Date().toISOString(),provider:'resend',...attempt})).run();}catch{/* Email delivery must not depend on optional operational metadata. */}
 }
-export function createOwnerAuth(env:Env){
+async function mailResponseJson(response:Response):Promise<Record<string,unknown>>{
+ if(!response.body)return {};const reader=response.body.getReader();let total=0;const chunks:Uint8Array[]=[];
+ try{while(true){const part=await reader.read();if(part.done)break;total+=part.value.length;if(total>8192)throw new Error('Response too large');chunks.push(part.value);}const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}const result=JSON.parse(new TextDecoder().decode(bytes));return result&&typeof result==='object'&&!Array.isArray(result)?result:{};}finally{await reader.cancel().catch(()=>{});}
+}
+async function sendMail(env:Env,email:string,otp:string,language:'zh'|'en'):Promise<void>{
+ const key=value(env,'RESEND_API_KEY'),from=value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM');if(!key||!from)throw new MailFailure('not_configured','邮箱验证码尚未启用，请配置 Resend 密钥和发件地址。');
+ let result:Response;try{result=await fetch('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({from,to:[email],subject:language==='zh'?'YourFeed 登录验证码':'YourFeed sign-in code',text:language==='zh'?`你的 YourFeed 登录验证码：${otp}。5 分钟内有效。请勿向他人提供此验证码。如果不是你发起的请求，请忽略这封邮件。`:`Your YourFeed sign-in code is ${otp}. It expires in 5 minutes. Do not share this code. If you did not request it, you can ignore this email.`})});}catch{await recordMailAttempt(env,{stage:'network_error',code:'transport_unavailable'});throw new MailFailure('transport_unavailable','验证码发送暂时不可用，请稍后重试。');}
+ let body:Record<string,unknown>={};try{body=await mailResponseJson(result);}catch{/* The public response never includes upstream response contents. */}
+ if(!result.ok){
+  const message=typeof body.message==='string'?body.message.toLowerCase():'';
+  const code=message.includes('testing emails')||message.includes('test mode')?'test_recipient_restricted':message.includes('domain')&&(message.includes('verified')||message.includes('verify'))?'sender_unverified':result.status===401?'credentials_rejected':result.status===429?'provider_rate_limited':result.status>=500?'provider_unavailable':'sending_rejected';
+  await recordMailAttempt(env,{stage:'provider_rejected',code,upstreamStatus:result.status});
+  throw new MailFailure(code,code==='test_recipient_restricted'?'邮件服务限制了测试邮件收件人，请配置已验证的发件域名或检查 Resend 测试收件限制。':code==='sender_unverified'?'邮件服务尚未验证发件域名，请检查 Resend 发件地址配置。':'验证码发送暂时不可用，请检查邮件服务配置后重试。');
+ }
+ if(typeof body.id!=='string'||!/^[a-zA-Z0-9_-]{6,128}$/.test(body.id)){await recordMailAttempt(env,{stage:'invalid_response',code:'invalid_provider_response',upstreamStatus:result.status});throw new MailFailure('invalid_provider_response','邮件服务未确认接收发送请求，请稍后重试。');}
+ await recordMailAttempt(env,{stage:'accepted',code:'accepted',upstreamStatus:result.status,messageId:body.id});
+}
+export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>void){
  const config=settings(env);const socialProviders:Record<string,any>={};
  for(const [provider,prefix] of [['google','GOOGLE'],['github','GITHUB']] as const){const clientId=value(env,prefix+'_CLIENT_ID'),clientSecret=value(env,prefix+'_CLIENT_SECRET');if(clientId&&clientSecret)socialProviders[provider]={clientId,clientSecret};}
  return betterAuth({
@@ -55,7 +74,7 @@ export function createOwnerAuth(env:Env){
   user:{changeEmail:{enabled:false},deleteUser:{enabled:false},validateUserInfo:async({user})=>ownerIdentityAllowed(env,user)?undefined:{error:'OWNER_ONLY',errorDescription:'此实例仅允许已验证的所有者邮箱登录。'}},
   databaseHooks:{user:{create:{before:async user=>{if(!ownerIdentityAllowed(env,user))return false;return {data:user};}}},session:{create:{before:async session=>{const user=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(session.userId).first<{email:string;email_verified:number}>();return user&&ownerIdentityAllowed(env,{email:user.email,emailVerified:!!user.email_verified})?{data:session}:false;}}}},
   verification:{storeInDatabase:true,storeIdentifier:{hash:identifier=>authHmac(env,'verification:'+identifier)}},
-  plugins:[emailOTP({otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||normalizeOwnerEmail(email)!==config.owner)throw new HttpError(403,'此登录方式不可用。');await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}})],
+  plugins:[emailOTP({otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||normalizeOwnerEmail(email)!==config.owner)throw new HttpError(403,'此登录方式不可用。');try{await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}catch(error){const failure=error instanceof MailFailure?error:new MailFailure('sending_unavailable','验证码发送暂时不可用，请稍后重试。');onMailFailure?.(failure);/* Better Auth deliberately swallows send-hook errors. Remove only this unsent code and propagate through the request-scoped observer. */await env.DB.prepare('DELETE FROM auth_verification WHERE identifier=? AND value=?').bind(await authHmac(env,'verification:sign-in-otp-'+normalizeOwnerEmail(email)),(await authHmac(env,'otp:'+otp))+':0').run();throw failure;}}})],
  });
 }
 export interface AuthSession {user:{id:string;email?:string;name?:string};session:{id:string;createdAt:Date;expiresAt:Date};}
@@ -117,11 +136,13 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
   }
   let forwarded=request;
   if(!callback){const safeBody=relative==='/email-otp/send-verification-otp'?{email:normalizeOwnerEmail(String(body.email)),type:'sign-in'}:relative==='/sign-in/email-otp'?{email:normalizeOwnerEmail(String(body.email)),otp:body.otp}:relative==='/sign-in/social'||relative==='/link-social'?{provider:body.provider,callbackURL:'/'}:{};const headers=new Headers(request.headers);headers.delete('content-length');forwarded=new Request(request.url,{method:'POST',headers,body:JSON.stringify(safeBody)});}
-  const auth=createOwnerAuth(env);const result=await auth.handler(forwarded);
+  let mailFailure:MailFailure|undefined;const auth=createOwnerAuth(env,failure=>{mailFailure=failure;});const result=await auth.handler(forwarded);
+  // Native runInBackgroundOrAwait awaits but catches hook errors; never report successful sending after rejection.
+  if(mailFailure){await result.body?.cancel();throw mailFailure;}
   if(result.status>=400){if(relative==='/sign-in/email-otp'&&result.status<500&&result.status!==429)return json({error:'验证码无效或已过期。'},400);return json({error:result.status===429?'请求过于频繁，请稍后重试。':'登录未完成，请检查验证码、邮箱或登录服务配置。'},result.status);}
   // Sign-in session token stays in the HttpOnly cookie; never copy it into browser-readable JSON.
   if(relative==='/sign-in/email-otp'){const headers=new Headers(result.headers);headers.set('Content-Type','application/json');headers.set('Cache-Control','no-store');await result.body?.cancel();return new Response(JSON.stringify({success:true}),{status:result.status,headers});}
   if(relative==='/revoke-sessions'){const signout=await auth.handler(new Request(config.origin+'/api/auth/sign-out',{method:'POST',headers:request.headers,body:'{}'}));const headers=new Headers(result.headers);for(const cookie of signout.headers.getSetCookie())headers.append('Set-Cookie',cookie);return new Response(await result.text(),{status:result.status,headers});}
   return result;
- }catch(error){return json({error:error instanceof HttpError?error.message:'登录服务暂时不可用，请稍后再试。'},error instanceof HttpError?error.status:503);}
+ }catch(error){return json({error:error instanceof HttpError?error.message:'登录服务暂时不可用，请稍后再试。',...(error instanceof MailFailure?{code:'AUTH_EMAIL_SEND_FAILED',reason:error.code}:{})},error instanceof HttpError?error.status:503);}
 }
