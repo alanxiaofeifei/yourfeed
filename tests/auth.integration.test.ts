@@ -107,4 +107,10 @@ describe('standalone singleowner authentication',()=>{
   const metadata=await env.DB.prepare('SELECT value FROM meta').first<{value:string}>();expect(JSON.parse(metadata!.value)).toMatchObject({stage:'accepted',messageId:'test-email-accepted'});expect(metadata!.value).not.toContain('owner@example.com');
  });
 
+ it('rejects mail redirects without forwarding credentials to another destination',async()=>{
+  const fetchMock=vi.fn(async(_input:RequestInfo|URL,_init?:RequestInit)=>new Response(null,{status:302,headers:{Location:'https://untrusted.example/collect'}}));vi.stubGlobal('fetch',fetchMock);
+  const response=await send();expect(response.status).toBe(503);expect(fetchMock).toHaveBeenCalledTimes(1);expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.resend.com/emails');expect((fetchMock.mock.calls[0] as unknown as [unknown,RequestInit])[1].redirect).toBe('manual');
+  expect((await env.DB.prepare('SELECT COUNT(*) n FROM auth_verification').first<{n:number}>())?.n).toBe(0);
+ });
+
 });
