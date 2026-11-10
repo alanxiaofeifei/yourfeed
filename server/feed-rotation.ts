@@ -66,11 +66,14 @@ export function rotatedFeedPage(items:ContentItem[],sources:Source[],feedback:Re
   // An excluded copy of a news event can already be read/hidden. Include it only
   // as deduplication evidence so another publisher's copy cannot immediately recur.
   const excludedNews=items.filter(item=>item.kind==='news'&&excluded.has(item.id)&&!rankedIds.has(item.id));
-  const excludedUrls=new Set(items.filter(item=>excluded.has(item.id)).map(item=>canonicalFeedUrl(item.url)).filter((url):url is string=>url!==undefined));
+  const excludedUrls=new Set(items.filter(item=>item.kind!=='news'&&excluded.has(item.id)).map(item=>canonicalFeedUrl(item.url)).filter((url):url is string=>url!==undefined));
   const seenUrls=new Set<string>();
-  const grouped=groupNews([...ranked,...excludedNews],items).filter(item=>{
+  const grouped=groupNews([...ranked,...excludedNews],items,excluded).filter(item=>{
+    // News identity and exclusion are exclusively decided by groupNews. A common
+    // release/issue URL cannot collapse different versions or individual stories.
+    if(item.kind==='news')return true;
     const canonical=canonicalFeedUrl(item.url);
-    if(excluded.has(item.id)||(canonical&&excludedUrls.has(canonical))||item.relatedSources?.some(source=>{const url=canonicalFeedUrl(source.url);return url!==undefined&&excludedUrls.has(url);}))return false;
+    if(excluded.has(item.id)||(canonical&&excludedUrls.has(canonical)))return false;
     // Keep the first normal-ranked copy before shuffling. Titles never establish
     // identity, so different releases/events sharing a headline remain distinct.
     if(canonical){if(seenUrls.has(canonical))return false;seenUrls.add(canonical);}return true;

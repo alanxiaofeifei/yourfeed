@@ -23,7 +23,7 @@ function provenance(item:ContentItem):Provenance[]{
   return [{name:item.sourceName,url:item.url},...(item.relatedSources||[])];
 }
 interface Group {items:ContentItem[];keys:Set<string>;first:number;last:number;}
-export function groupNews(items:ContentItem[],allItems:ContentItem[]=items):ContentItem[] {
+export function groupNews(items:ContentItem[],allItems:ContentItem[]=items,excludedIds?:ReadonlySet<string>):ContentItem[] {
   const byId=new Map(allItems.map(item=>[item.id,item]));
   const parentUrls=new Set<string>();
   for(const item of allItems)if(item.parentId){const parent=byId.get(item.parentId);const url=parent&&canonical(parent.url);if(url)parentUrls.add(url);}
@@ -46,7 +46,9 @@ export function groupNews(items:ContentItem[],allItems:ContentItem[]=items):Cont
     else {const group=groups[match];group.items.push(item);group.first=Math.min(group.first,date);group.last=Math.max(group.last,date);for(const key of keys)group.keys.add(key);}
     for(const key of keys){const set=keyed.get(key)||new Set<number>();set.add(match);keyed.set(key,set);}
   }
-  return order.map(entry=>{
+  // Exclusion follows actual conservative event membership, never a shared URL
+  // alone: release pages and daily issues can contain several distinct events.
+  return order.filter(entry=>'item'in entry?!excludedIds?.has(entry.item.id):!groups[entry.group].items.some(item=>excludedIds?.has(item.id))).map(entry=>{
     if('item'in entry)return entry.item;
     const group=groups[entry.group];if(group.items.length===1)return group.items[0];
     const representative=[...group.items].sort((a,b)=>Number(!!b.liked)-Number(!!a.liked)||Number(!!b.saved)-Number(!!a.saved))[0];
