@@ -24,7 +24,7 @@ vi.mock('../server/db', () => ({
   settleUsage:vi.fn(async(_env,settlement)=>{const row=state.reservations.get(settlement.reservationId);if(!settlement.uncertain&&row)Object.assign(row,{reserved:settlement.cost,status:settlement.success?'settled':'failed',cost:settlement.cost});}),
 }));
 import * as db from '../server/db';
-import { analyzeItem, analyzePending, testProvider, sourceCoverage, contentFingerprint, validateAnalysis, sourceReferences } from '../server/ai';
+import { analyzeItem, analyzePending, testProvider, probeProviderModels, sourceCoverage, contentFingerprint, validateAnalysis, sourceReferences } from '../server/ai';
 
 const env={} as any;
 const item: ContentItem={id:'item-1',kind:'article',platform:'RSS',sourceId:'rss-test',sourceName:'技术原文',title:'Linux 网络故障排查',url:'https://example.com/article',summary:'介绍 Linux 网络故障的排查过程，使用实际命令验证连接状态，逐步定位 DHCP、DNS、网关和防火墙等不同故障来源。',body:'排查过程与证据。'.repeat(80),topics:['it','network','linux'],publishedAt:'2026-11-10T00:00:00Z'};
@@ -47,7 +47,7 @@ describe('Custom OpenAI-compatible providers',()=>{
   it('supports arbitrary models, explicit params and plain JSON mode over chat completions',async()=>{
     custom({temperature:0.4,maxOutputTokens:1024,timeoutSeconds:40});await analyzeItem(env,item);
     const [url,request]=modelCalls()[0] as unknown as [string,RequestInit];const body=JSON.parse(String(request.body));
-    expect(url).toBe('https://api.vendor.net/v1/chat/completions');expect(body.model).toBe('vendor/arbitrary-model:free');expect(body.temperature).toBe(0.4);expect(body.max_tokens).toBe(1024);expect(body.response_format).toEqual({type:'json_object'});expect(body.reasoning_effort).toBeUndefined();expect(body.thinking).toBeUndefined();expect(request.redirect).toBe('error');expect(Object.keys(request.headers as object)).toEqual(['Content-Type','Authorization']);
+    expect(url).toBe('https://api.vendor.net/v1/chat/completions');expect(body.model).toBe('vendor/arbitrary-model:free');expect(body.temperature).toBe(0.4);expect(body.max_tokens).toBe(1024);expect(body.response_format).toEqual({type:'json_object'});expect(body.reasoning_effort).toBeUndefined();expect(body.thinking).toBeUndefined();expect(request.redirect).toBe('manual');expect(Object.keys(request.headers as object)).toEqual(['Content-Type','Authorization']);
     expect(db.reserveUsage).toHaveBeenCalledWith(env,expect.objectContaining({maxCost:expect.any(Number)}));
   });
   it('supports Responses protocol and an explicitly configured reasoning effort',async()=>{
@@ -85,7 +85,7 @@ describe('Custom OpenAI-compatible providers',()=>{
   });
   it('does not forward credentials on redirects or leak endpoint/error text',async()=>{
     custom();fetchMock.mockImplementation(async(url:string)=>url.startsWith('https://cloudflare-dns.com/')?new Response(JSON.stringify({Status:0,Answer:[{type:1,data:'93.184.216.34'}]})):new Response('https://private.vendor.net key-secret',{status:302,headers:{Location:'https://private.vendor.net'}}));
-    await expect(analyzeItem(env,item)).rejects.toThrow('不接受');expect(modelCalls()).toHaveLength(1);expect((modelCalls()[0][1] as RequestInit).redirect).toBe('error');
+    await expect(analyzeItem(env,item)).rejects.toMatchObject({diagnostic:{code:'provider_redirect_blocked',upstreamStatus:302}});expect(modelCalls()).toHaveLength(1);expect((modelCalls()[0][1] as RequestInit).redirect).toBe('manual');
   });
   it('honors explicitly cleared OpenAI reasoning without reintroducing its default',async()=>{
     state.config.reasoningEffort='';await analyzeItem(env,item);const payload=JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));expect(payload.reasoning).toBeUndefined();
@@ -94,6 +94,30 @@ describe('Custom OpenAI-compatible providers',()=>{
 afterEach(()=>vi.unstubAllGlobals());
 
 describe('AI access, provider isolation and accounting',()=>{
+  it('uses configured test output allowance instead of a hidden tiny cap',async()=>{
+    state.config.maxOutputTokens=2048;await testProvider(env);const body=JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));expect(body.max_output_tokens).toBe(2048);
+  });
+  it('keeps the generation failure even when a metadata-only probe succeeds',async()=>{
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+    fetchMock.mockImplementation(async(_url:string,options:RequestInit)=>{if(options.method==='POST')throw new TypeError('outbound network access is not allowed '+state.key);return new Response(JSON.stringify({data:[{id:'gpt-6.1-sol'}]}));});
+    await expect(testProvider(env)).rejects.toMatchObject({diagnostic:{code:'provider_network_blocked',stage:'transport',billingUncertain:false,modelProbe:{reachable:true,status:200,modelListed:true}}});
+    expect(fetchMock.mock.calls.map((call:any)=>call[1].method)).toEqual(['POST','GET']);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({cost:0,uncertain:false}));expect(JSON.stringify(warn.mock.calls)).not.toContain(state.key);warn.mockRestore();
+  });
+  it.each([{}, {output:{}}, {output:[{content:null}]}, {choices:[]}])('does not report a successful test for empty/malformed 200 output: %j',async payload=>{
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});fetchMock.mockImplementation(async(_url:string,options:RequestInit)=>new Response(JSON.stringify(options.method==='GET'?{}:payload)));
+    await expect(testProvider(env)).rejects.toMatchObject({diagnostic:{code:'provider_empty_response',stage:'response',modelProbe:{reachable:true,status:200,modelListed:null}}});warn.mockRestore();
+  });
+  it('settles reported usage once for truncated reasoning output before returning failure',async()=>{
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});fetchMock.mockImplementation(async(_url:string,options:RequestInit)=>new Response(JSON.stringify(options.method==='GET'?{data:[]}:{status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[],usage:{input_tokens:1000,output_tokens:150}})));
+    await expect(testProvider(env)).rejects.toMatchObject({diagnostic:{code:'provider_output_limit',billingUncertain:false}});expect(db.settleUsage).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({cost:0.0035,inputTokens:1000,outputTokens:150,success:false,uncertain:false}));warn.mockRestore();
+  });
+  it('does not misdiagnose content-filtered incomplete output as a token-limit problem',async()=>{
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});fetchMock.mockImplementation(async(_url:string,options:RequestInit)=>new Response(JSON.stringify(options.method==='GET'?{}:{status:'incomplete',incomplete_details:{reason:'content_filter'},output_text:'Partial text',usage:{input_tokens:10,output_tokens:5}})));
+    await expect(testProvider(env)).rejects.toMatchObject({diagnostic:{code:'provider_incomplete_response',billingUncertain:false}});expect(db.settleUsage).toHaveBeenCalledTimes(1);warn.mockRestore();
+  });
+  it('treats model-list results as metadata reachability, not generation or billing validation',async()=>{
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({data:[{id:'another-model'}]})));expect(await probeProviderModels(state.config,state.key!)).toEqual({reachable:true,status:200,modelListed:false});expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('GET');
+  });
   it('does not call a model when the key is missing or AI is disabled',async()=>{
     state.key=undefined;await expect(analyzeItem(env,item)).rejects.toThrow('密钥');
     state.key='test-secret';state.config.enabled=false;await expect(analyzeItem(env,item)).rejects.toThrow('启用');
@@ -124,7 +148,7 @@ describe('AI access, provider isolation and accounting',()=>{
     fetchMock.mockResolvedValue(new Response('',{status:429}));await expect(analyzeItem(env,item)).rejects.toThrow('额度');expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it('keeps a conservative reservation for an unknown network outcome',async()=>{
-    fetchMock.mockRejectedValue(new Error('network timeout with sensitive payload'));await expect(analyzeItem(env,item)).rejects.toThrow('暂时不可用');expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false,uncertain:true}));expect([...state.reservations.values()][0].status).toBe('reserved');
+    fetchMock.mockRejectedValue(new Error('network timeout with sensitive payload'));await expect(analyzeItem(env,item)).rejects.toMatchObject({diagnostic:{code:'provider_timeout',stage:'transport',billingUncertain:true}});expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false,uncertain:true}));expect([...state.reservations.values()][0].status).toBe('reserved');
   });
   it('tracks paid tokens even if the model returns malformed analysis',async()=>{
     fetchMock.mockResolvedValue(response({bad:'not analysis'}));await expect(analyzeItem(env,item)).rejects.toThrow('格式');expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false,cost:0.0035}));expect(db.saveAnalysisCache).not.toHaveBeenCalled();

@@ -46,7 +46,7 @@ export function isPublicAddress(address: string): boolean {
 export const resolvePublicDns: PublicDnsResolver = async hostname => {
   const responses=await Promise.all(['A','AAAA'].map(async type=>{
     let response:Response;
-    try { response=await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=${type}`,{headers:{Accept:'application/dns-json'},redirect:'error',signal:AbortSignal.timeout(6000)}); }
+    try { response=await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=${type}`,{headers:{Accept:'application/dns-json'},redirect:'manual',signal:AbortSignal.timeout(6000)}); }
     catch { throw new HttpError(503, '暂时无法验证 API 域名的公开地址，请稍后重试。'); }
     if (!response.ok || Number(response.headers.get('content-length')||0)>64000) { await response.body?.cancel();throw new HttpError(503, '暂时无法验证 API 域名的公开地址，请稍后重试。'); }
     let body:any;try { const text=await response.text();if(text.length>64000)throw new Error();body=JSON.parse(text); } catch { throw new HttpError(503, '暂时无法验证 API 域名的公开地址，请稍后重试。'); }

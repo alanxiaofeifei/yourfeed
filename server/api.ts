@@ -9,6 +9,7 @@ import { handleAuth, requireUser, requireRecentAuth } from './auth';
 import { getProfile, saveProfile } from './profile';
 import { createSource, updateSourceInput, deleteSource } from './sources';
 import { getDeployment, saveDeployment, checkDeployment } from './deployment';
+import { providerErrorDiagnostic } from './provider-diagnostics';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -75,5 +76,5 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
       return response(await analyzePending(env,Math.min(3,Math.max(1,Number(body.limit)||1)),userId));
     }
     return response({error:'接口不存在。'},404);
-  }catch(error){return response({error:cleanError(error)},error instanceof HttpError?error.status:500);}
+  }catch(error){const diagnostic=providerErrorDiagnostic(error);return response({error:cleanError(error),...(diagnostic?{diagnostic}:{})},error instanceof HttpError?error.status:500);}
 }

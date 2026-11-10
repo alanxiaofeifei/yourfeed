@@ -6,6 +6,7 @@ import { rankFeed } from './ranking';
 import { buildProviderEndpoint, resolveProviderEndpoint, validateProviderBaseUrl, type ApiProtocol } from './provider-endpoint';
 import { createProfile, type UserProfile } from '../shared/profile';
 import { getProfile } from './profile';
+import { ProviderFailure,ProviderDiagnosticError,providerMessage,transportFailure,httpFailure,readProviderJson,responseDiagnostic,type ModelProbe,type ProviderDiagnostic } from './provider-diagnostics';
 
 // Prices checked 2026-11-10. These are application estimates, not a provider balance.
 // GLM invoices CNY: CNY6/USD is a deliberately conservative budgeting conversion.
@@ -86,7 +87,9 @@ function reasoningFor(config:ProviderConfig):string|undefined {return config.rea
 function outputLimit(config:ProviderConfig,test=false):number {
   const value=config.maxOutputTokens??MAX_OUTPUT;
   if (!Number.isInteger(value)||value<128||value>32768)throw new HttpError(400,'最大输出 tokens 应为 128–32768 的整数。');
-  return test?Math.min(96,value):value;
+  // A reasoning model may consume a tiny cap entirely before producing visible
+  // text. Connection tests must exercise the configured ceiling, not a hidden 96.
+  return value;
 }
 function configIdentity(config:ProviderConfig):string {
   return JSON.stringify(['provider-v2',config.provider,config.model,config.provider==='custom'?validateProviderBaseUrl(config.baseUrl||''):BASE_URLS[config.provider],protocolFor(config),config.temperature??null,config.maxOutputTokens??MAX_OUTPUT,config.timeoutSeconds??25,config.responseFormat||(config.provider==='openai'?'json_schema':'json_object'),config.reasoningEffort??(config.provider==='openai'?'low':null)]);
@@ -118,27 +121,8 @@ export function validateAnalysis(value: unknown, item: ContentItem, model: strin
   return { ...parsed.data, coverage: sourceCoverage(item), model,...(profile?{summaryLanguage:profile.summaryLanguage,profileVersion:profile.version}:{}) };
 }
 
-interface ModelResult { text: string; inputTokens: number; outputTokens: number; usageKnown: boolean; }
-class ProviderFailure extends Error { constructor(public kind: 'auth'|'quota'|'request'|'unavailable', public uncertain: boolean) { super(kind); } }
-function providerMessage(error: unknown): HttpError {
-  if (error instanceof HttpError) return error;
-  if (error instanceof ProviderFailure) {
-    if (error.kind === 'auth') return new HttpError(400, '密钥无效或没有此模型权限，请在设置中检查。');
-    if (error.kind === 'quota') return new HttpError(429, '服务商额度不足或请求受限，请检查服务商控制台后再试。');
-    if (error.kind === 'request') return new HttpError(400, '服务商不接受当前模型参数，请检查模型和标准 API 密钥。');
-  }
-  return new HttpError(502, '模型服务暂时不可用，已保留原始内容；未自动切换服务商。');
-}
-async function boundedJson(response: Response): Promise<any> {
-  if (!response.body) throw new ProviderFailure('unavailable', true);
-  const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
-  try {
-    while (true) { const {done, value} = await reader.read(); if (done) break; size += value.byteLength; if (size > MAX_RESPONSE_BYTES) { await reader.cancel(); throw new ProviderFailure('unavailable', true); } chunks.push(value); }
-    const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch { throw new ProviderFailure('unavailable', true); }
-}
-async function callModel(config: ProviderConfig, key: string, prompt: string, test = false,profile?:UserProfile): Promise<ModelResult> {
+interface ModelResult { text: string; inputTokens: number; outputTokens: number; usageKnown: boolean; issue?:ProviderDiagnostic; }
+export async function callModel(config: ProviderConfig, key: string, prompt: string, test = false,profile?:UserProfile): Promise<ModelResult> {
   const maxOutput = outputLimit(config,test);const protocol=protocolFor(config);
   if(protocol!=='responses'&&protocol!=='chat-completions')throw new HttpError(400,'请选择有效的 API 协议。');
   const timeout=config.timeoutSeconds??25;
@@ -154,22 +138,43 @@ async function callModel(config: ProviderConfig, key: string, prompt: string, te
   else body={model:config.model,stream:false,messages:[{role:'system',content:test?'Reply with OK.':buildSystemPrompt(profile)},{role:'user',content:prompt}],max_tokens:maxOutput,...(config.provider==='deepseek'||config.provider==='glm'?{thinking:{type:reasoning&&reasoning!=='none'?'enabled':'disabled'}}:{}),...(reasoning?{reasoning_effort:reasoning}:{}),...(test||format==='none'?{}:{response_format:format==='json_schema'?{type:'json_schema',json_schema:{name:'yourfeed_analysis',strict:true,schema:outputSchema}}:{type:'json_object'}})};
   if(config.temperature!==undefined)body.temperature=config.temperature;
   let response: Response;
-  try { response = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout*1000),redirect:'error'}); }
-  catch { throw new ProviderFailure('unavailable', true); }
+  try { response = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout*1000),redirect:'manual'}); }
+  catch (error) { throw transportFailure(error,config.provider); }
   if (!response.ok) {
-    await response.body?.cancel();
-    if (response.status === 401 || response.status === 403) throw new ProviderFailure('auth', false);
-    if (response.status === 429 || response.status === 402) throw new ProviderFailure('quota', false);
-    if (response.status < 500) throw new ProviderFailure('request', false);
-    throw new ProviderFailure('unavailable', true);
+    let payload:unknown;try{payload=await readProviderJson(response,config.provider,key,64000);}catch{/* Status still provides safe diagnostics for HTML gateways. */}
+    throw httpFailure(response,payload,config.provider,key);
   }
-  const data = await boundedJson(response);
+  const data = await readProviderJson(response,config.provider,key,MAX_RESPONSE_BYTES);
+  if(data.error)throw httpFailure(response,data,config.provider,key);
   const usage = data.usage || {};
   const rawInput = protocol==='responses' ? usage.input_tokens : usage.prompt_tokens;
   const rawOutput = protocol==='responses' ? usage.output_tokens : usage.completion_tokens;
   const usageKnown = Number.isFinite(rawInput) && Number.isFinite(rawOutput) && rawInput >= 0 && rawOutput >= 0;
-  const text = protocol==='responses' ? data.output_text || (data.output || []).flatMap((o:any) => o.content || []).filter((c:any) => c.type === 'output_text').map((c:any) => c.text || '').join('') : data.choices?.[0]?.message?.content || '';
-  return { text:typeof text==='string'?text:'', inputTokens:usageKnown?rawInput:0, outputTokens:usageKnown?rawOutput:0, usageKnown };
+  const choice=Array.isArray(data.choices)?data.choices[0]:undefined;
+  const text=protocol==='responses'?(typeof data.output_text==='string'?data.output_text:(Array.isArray(data.output)?data.output:[]).flatMap((output:any)=>Array.isArray(output?.content)?output.content:[]).filter((content:any)=>content?.type==='output_text'&&typeof content.text==='string').map((content:any)=>content.text).join('')):choice?.message?.content||'';
+  const visibleText=typeof text==='string'?text:'';
+  const limited=data.incomplete_details?.reason==='max_output_tokens'||choice?.finish_reason==='length';
+  const incomplete=data.status==='incomplete'||choice?.finish_reason==='content_filter';
+  const issue=limited||incomplete||!visibleText.trim()?{...responseDiagnostic(response,config.provider,key),stage:'response' as const,code:limited?'provider_output_limit' as const:incomplete?'provider_incomplete_response' as const:'provider_empty_response' as const,billingUncertain:!usageKnown}:undefined;
+  return { text:visibleText,inputTokens:usageKnown?rawInput:0,outputTokens:usageKnown?rawOutput:0,usageKnown,...(issue?{issue}:{}) };
+}
+
+/** Metadata-only probe: never requests model generation and never changes provider. */
+export async function probeProviderModels(config:ProviderConfig,key:string):Promise<ModelProbe> {
+  try{
+    const endpoint=config.provider==='custom'?await resolveProviderEndpoint(config.baseUrl||'',protocolFor(config)):buildProviderEndpoint(BASE_URLS[config.provider],protocolFor(config));
+    const url=endpoint.replace(/\/(?:responses|chat\/completions)$/,'')+'/models';
+    let response:Response;
+    try{response=await fetch(url,{method:'GET',headers:{Accept:'application/json',Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(8000),redirect:'manual'});}catch(error){throw transportFailure(error,config.provider);}
+    const info=responseDiagnostic(response,config.provider,key);let data:any;
+    try{data=await readProviderJson(response,config.provider,key,MAX_RESPONSE_BYTES);}catch(error){if(!response.ok)throw httpFailure(response,undefined,config.provider,key);throw error;}
+    if(!response.ok||data.error)throw httpFailure(response,data,config.provider,key);
+    const models=Array.isArray(data.data)?data.data:Array.isArray(data.models)?data.models:undefined;
+    return {reachable:true,status:response.status,modelListed:models?models.some((entry:any)=>entry&&typeof entry==='object'&&entry.id===config.model):null,...(info.requestId?{requestId:info.requestId}:{})};
+  }catch(error){
+    const diagnostic=error instanceof ProviderFailure?error.diagnostic:undefined;
+    return {reachable:diagnostic?.upstreamStatus!==undefined,...(diagnostic?{code:diagnostic.code}:{}),...(diagnostic?.upstreamStatus!==undefined?{status:diagnostic.upstreamStatus}:{}),...(diagnostic?.requestId?{requestId:diagnostic.requestId}:{})};
+  }
 }
 
 async function reserve(env: Env, config: ProviderConfig, contentId: string, prompt: string, test = false,profile?:UserProfile) {
@@ -198,6 +203,7 @@ export async function analyzeItem(env: Env, item: ContentItem): Promise<ContentI
   try { result = await callModel(config,key,prompt,false,profile); }
   catch (error) { await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});throw providerMessage(error); }
   let analysis: Analysis;
+  if(result.issue){await settleResult(env,config,reservationId,result,false);throw new ProviderDiagnosticError(result.issue);}
   try { analysis=validateAnalysis(JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,'')),item,config.model,profile); }
   catch (error) { await settleResult(env,config,reservationId,result,false); throw error instanceof HttpError?error:new HttpError(502,'模型未返回可用的 JSON 摘要，本次结果未保存。'); }
   // Settle before cache persistence so a DB write failure cannot cause unaccounted spend.
@@ -239,8 +245,20 @@ export async function testProvider(env: Env, overrideConfig?: Partial<ProviderCo
   if (!key) throw new HttpError(400,'请先保存所选服务商的 API 密钥。');
   if (key.length < 8 || key.length > 1024 || /[\r\n]/.test(key)) throw new HttpError(400,'密钥格式不正确。');
   const {reservationId} = await reserve(env,config,'connection-test','Reply with OK.',true);
+  let settled=false;
   try {
-    const result=await callModel(config,key,'Reply with OK.',true);await settleResult(env,config,reservationId,result,true);
+    const result=await callModel(config,key,'Reply with OK.',true);await settleResult(env,config,reservationId,result,!result.issue);settled=true;
+    if(result.issue)throw new ProviderDiagnosticError(result.issue);
     return {ok:true,provider:config.provider,model:config.model,message:'连接成功。测试用量已计入本站用量。'};
-  } catch (error) { await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});throw providerMessage(error); }
+  } catch (error) {
+    if(!settled)await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});
+    const publicError=providerMessage(error);
+    if(publicError instanceof ProviderDiagnosticError){
+      const modelProbe=await probeProviderModels(config,key);
+      const diagnosed=new ProviderDiagnosticError({...publicError.diagnostic,modelProbe});
+      console.warn('model_provider_failure',JSON.stringify(diagnosed.diagnostic));
+      throw diagnosed;
+    }
+    throw publicError;
+  }
 }

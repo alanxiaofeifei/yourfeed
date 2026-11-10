@@ -29,6 +29,6 @@ describe('Custom provider URL and DNS boundary',()=>{
   it('uses only the fixed DoH server and never sends model credentials to DNS',async()=>{
     const fetcher=vi.fn(async()=>new Response(JSON.stringify({Status:0,Answer:[{type:1,data:'8.8.8.8'}]})));vi.stubGlobal('fetch',fetcher);
     await resolvePublicDns('api.vendor.net');expect(fetcher).toHaveBeenCalledTimes(2);
-    for(const [url,options] of fetcher.mock.calls as unknown as [string,RequestInit][]) {expect(new URL(url).origin).toBe('https://cloudflare-dns.com');expect(options.headers).toEqual({Accept:'application/dns-json'});expect(options.redirect).toBe('error');}
+    for(const [url,options] of fetcher.mock.calls as unknown as [string,RequestInit][]) {expect(new URL(url).origin).toBe('https://cloudflare-dns.com');expect(options.headers).toEqual({Accept:'application/dns-json'});expect(options.redirect).toBe('manual');}
   });
 });
