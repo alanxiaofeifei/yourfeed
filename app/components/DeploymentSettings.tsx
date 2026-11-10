@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ExternalLink, Globe2, LoaderCircle, ShieldCheck } from 'lucide-react';
 import type { DeploymentState } from '../../server/deployment';
-import { useI18n } from '../i18n';
+import { localeTag, useI18n } from '../i18n';
 import './DeploymentSettings.css';
 
 export default function DeploymentSettings() {
@@ -34,7 +34,7 @@ export default function DeploymentSettings() {
   </form>
   {saved&&<p className="deployment-success" role="status">{t('已保存。现在可以检查域名连接。','Saved. You can now check the domain connection.')}</p>}
   {error&&<p className="deployment-error" role="alert">{error}</p>}
-  {state?.lastCheck&&<div className={'deployment-result '+(state.lastCheck.instance==='matched'?'verified':'')} role="status"><div className="deployment-result-title"><CheckCircle2 size={18}/><strong>{state.lastCheck.instance==='matched'?t('已到达当前实例','This instance verified'):t('连接尚未验证','Connection not verified')}</strong><time>{new Date(state.lastCheck.checkedAt).toLocaleString(language==='zh'?'zh-CN':'en')}</time></div><div className="deployment-statuses"><span>DNS: {state.lastCheck.dns}</span><span>HTTPS: {state.lastCheck.https}</span><span>{t('实例','Instance')}: {state.lastCheck.instance}</span></div><p>{state.lastCheck.instance==='matched'?t('域名已指向当前 YourFeed。登录主地址仍保持原配置。','The domain reaches this YourFeed. Your configured sign-in origin remains unchanged.'):state.lastCheck.https==='authentication-required'?t('域名有响应，但登录页或重定向阻止了验证。请检查平台的域名和访问设置。','The domain responded, but a sign-in page or redirect prevented verification. Check the provider’s domain and access settings.'):t('请检查 DNS 传播、证书和 Worker 路由，然后重试。','Check DNS propagation, the certificate and Worker routing, then try again.')}</p></div>}
+  {state?.lastCheck&&<div className={'deployment-result '+(state.lastCheck.instance==='matched'?'verified':'')} role="status"><div className="deployment-result-title"><CheckCircle2 size={18}/><strong>{state.lastCheck.instance==='matched'?t('已到达当前实例','This instance verified'):t('连接尚未验证','Connection not verified')}</strong><time>{new Date(state.lastCheck.checkedAt).toLocaleString(localeTag(language))}</time></div><div className="deployment-statuses"><span>DNS: {state.lastCheck.dns}</span><span>HTTPS: {state.lastCheck.https}</span><span>{t('实例','Instance')}: {state.lastCheck.instance}</span></div><p>{state.lastCheck.instance==='matched'?t('域名已指向当前 YourFeed。登录主地址仍保持原配置。','The domain reaches this YourFeed. Your configured sign-in origin remains unchanged.'):state.lastCheck.https==='authentication-required'?t('域名有响应，但登录页或重定向阻止了验证。请检查平台的域名和访问设置。','The domain responded, but a sign-in page or redirect prevented verification. Check the provider’s domain and access settings.'):t('请检查 DNS 传播、证书和 Worker 路由，然后重试。','Check DNS propagation, the certificate and Worker routing, then try again.')}</p></div>}
   <div className="deployment-note"><ShieldCheck size={17}/><p>{t('域名检查不会切换登录主地址。需要迁移登录地址时，先在部署环境更新 AUTH_BASE_URL 与 OAuth 回调地址，保留原地址直到新域名登录验证成功。','Verification never switches the sign-in origin. To migrate, update AUTH_BASE_URL and OAuth callback URLs in the deployment environment, keeping the old address until sign-in works on the new domain.')}{state?.configuredOrigin&&<> {t('当前配置：','Configured: ')}<code>{state.configuredOrigin}</code></>}</p></div>
  </section>;
 }

@@ -70,8 +70,24 @@ function importance(item:ContentItem,profile?:UserProfile):Importance|null {
   if(profile){
     score+=interest*8+(goal?3:0);
     const labels=matched.filter(topic=>(profile.topicWeights[topic]||0)>0).slice(0,2).map(topic=>topicLabel(topic,profile.language)).join(' · ');
-    reason=profile.language==='en'?(goal?`This update relates to your goal: ${goal}`:`This update concerns ${labels||'a subject you follow'}. Consider how the reported changes affect your interests.`):(goal?`这条更新与你设置的目标相关：${goal}`:`这条涉及你关注的${labels||'主题'}，可留意报道中的变化对这些兴趣的影响。`);
-    if(profile.language==='en')signal=({'安全与权限':'Security & access','模型发布':'Model release','部署与工作流':'Deployment & workflows','API 与成本':'API & costs','官方规则变化':'Policy changes','可用性变化':'Availability','科学与知识':'Science & knowledge','创作与开发':'Creating & development','主题更新':'Topic update'} as Record<string,string>)[signal]||'Topic update';
+    reason=({
+      zh:goal?`这条更新与你设置的目标相关：${goal}`:`这条涉及你关注的${labels||'主题'}，可留意报道中的变化对这些兴趣的影响。`,
+      'zh-TW':goal?`這則更新與你設定的目標相關：${goal}`:`這則涉及你關注的${labels||'主題'}，可留意報導中的變化對這些興趣的影響。`,
+      en:goal?`This update relates to your goal: ${goal}`:`This update concerns ${labels||'a subject you follow'}. Consider how the reported changes affect your interests.`,
+      vi:goal?`Tin cập nhật này liên quan đến mục tiêu của bạn: ${goal}`:`Tin cập nhật này đề cập đến ${labels||'chủ đề bạn theo dõi'}. Hãy xem những thay đổi được đưa tin ảnh hưởng thế nào đến sở thích của bạn.`,
+    })[profile.language];
+    const signals:Record<string,Record<typeof profile.language,string>>={
+      '安全与权限':{zh:'安全与权限','zh-TW':'安全與權限',en:'Security & access',vi:'Bảo mật và quyền truy cập'},
+      '模型发布':{zh:'模型发布','zh-TW':'模型發布',en:'Model release',vi:'Ra mắt mô hình'},
+      '部署与工作流':{zh:'部署与工作流','zh-TW':'部署與工作流程',en:'Deployment & workflows',vi:'Triển khai và quy trình'},
+      'API 与成本':{zh:'API 与成本','zh-TW':'API 與成本',en:'API & costs',vi:'API và chi phí'},
+      '官方规则变化':{zh:'官方规则变化','zh-TW':'官方規則變更',en:'Policy changes',vi:'Thay đổi chính sách'},
+      '可用性变化':{zh:'可用性变化','zh-TW':'可用性變更',en:'Availability',vi:'Khả năng sử dụng'},
+      '科学与知识':{zh:'科学与知识','zh-TW':'科學與知識',en:'Science & knowledge',vi:'Khoa học và tri thức'},
+      '创作与开发':{zh:'创作与开发','zh-TW':'創作與開發',en:'Creating & development',vi:'Sáng tạo và phát triển'},
+      '主题更新':{zh:'主题更新','zh-TW':'主題更新',en:'Topic update',vi:'Cập nhật chủ đề'},
+    };
+    signal=(signals[signal]||signals['主题更新'])[profile.language];
   }
   return {score,signal,reason};
 }

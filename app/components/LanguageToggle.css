@@ -1,0 +1,11 @@
+.language-toggle{height:auto;min-height:38px;padding:0 8px;gap:5px;color:var(--text);font-size:12px;max-width:210px}
+.language-toggle>span:first-child{font-size:11px;opacity:.8;flex-shrink:0}
+.language-toggle select{font:inherit;min-height:36px;padding:4px 17px 4px 4px;border:0;border-radius:4px;color:inherit;background:transparent;cursor:pointer;max-width:166px;min-width:0}
+.language-toggle select option{color:var(--text);background:var(--surface)}
+.language-toggle:focus-within{outline:2px solid var(--amber);outline-offset:3px}
+@media(max-width:650px){.language-toggle{min-height:38px;padding:0 4px;max-width:147px}.language-toggle select{font-size:11px;max-width:139px;min-height:36px;padding-right:12px}.language-toggle>span:first-child{display:none}}
+html[lang=vi-VN] .hero-heading h1{font-size:clamp(22px,2vw,32px);line-height:1.5}
+html[lang=vi-VN] .hero-heading p{line-height:1.8}
+html[lang=vi-VN] .primary-nav>button{font-size:12px}
+html[lang=vi-VN] .kind-tabs{gap:15px}
+html[lang=vi-VN] .kind-tabs>button{font-size:10px}

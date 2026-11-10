@@ -3,9 +3,11 @@ import { createProfile, PRESETS, TOPIC_LABELS, type UserProfile, type ProfilePre
 import type { Env } from './db';
 import { HttpError } from './security';
 
+import {isLanguage} from '../shared/language';
+
 const PROFILE_KEY='profile:user';
-function language(value:unknown,fallback:Language):Language {if(value===undefined)return fallback;if(value!=='zh'&&value!=='en')throw new HttpError(400,'请选择中文或 English。');return value;}
-function normalize(input:Record<string,unknown>,old:UserProfile):UserProfile {
+function language(value:unknown,fallback:Language):Language {if(value===undefined)return fallback;if(!isLanguage(value))throw new HttpError(400,'请选择支持的界面语言。');return value;}
+export function normalizeProfile(input:Record<string,unknown>,old:UserProfile):UserProfile {
   const preset=input.preset===undefined?old.preset:input.preset;
   if(typeof preset!=='string'||!Object.hasOwn(PRESETS,preset))throw new HttpError(400,'请选择有效的兴趣预设。');
   const uiLanguage=language(input.language,old.language);const changedPreset=preset!==old.preset;
@@ -35,11 +37,11 @@ export async function getProfile(env:Env):Promise<UserProfile> {
   const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind(PROFILE_KEY).first<{json:string}>();
   if(!row)return createProfile();
   try{
-    const stored=JSON.parse(row.json);const base=createProfile();const parsed=normalize(stored,{...base,version:Math.max(1,Number.isSafeInteger(stored.version)?stored.version:1)});
+    const stored=JSON.parse(row.json);const base=createProfile();const parsed=normalizeProfile(stored,{...base,version:Math.max(1,Number.isSafeInteger(stored.version)?stored.version:1)});
     return {...parsed,version:Math.max(1,Number.isSafeInteger(stored.version)?stored.version:1)};
   }catch{return createProfile();}
 }
 export async function saveProfile(env:Env,input:Record<string,unknown>):Promise<UserProfile> {
-  const old=await getProfile(env);const next=normalize(input,old);
+  const old=await getProfile(env);const next=normalizeProfile(input,old);
   await env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind(PROFILE_KEY,JSON.stringify(next)).run();return next;
 }

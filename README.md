@@ -25,11 +25,15 @@ Each deployment is independent: it does not copy the developer’s Cloudflare in
 `OWNER_EMAIL` is **your own sign-in and code-recipient email**. `onboarding@resend.dev` is a test **sender**, never your owner address; it can send only to the email used to register your Resend account. Normal email use requires a verified sending domain. Store `RESEND_API_KEY` as a Cloudflare **Secret**, not Text. A successful send request means the provider accepted it, not that it reached your inbox; rejected requests are shown as errors.
 
 - One feed for video, reading, news, posts and projects; filters, saved items, history and source feedback. **Another batch** picks different cached recommendations under the current filters, without AI calls or source updates.
-- English and Chinese UI, a personal onboarding profile, and three editable starting directions: IT & AI practice, developers & creators, and knowledge explorer.
+- English, Simplified Chinese, Traditional Chinese (Taiwan), and Vietnamese UI, a personal onboarding profile, and three editable starting directions: IT & AI practice, developers & creators, and knowledge explorer.
 - RSS, public GitHub stars, YouTube metadata with your API key, best-effort Bilibili updates, and link imports.
 - Optional AI reading through OpenAI, DeepSeek, GLM or an HTTPS compatible provider. Provider/model selection is explicit; daily limits, budget reservations and analysis caching bound usage. Prices and upstream subscriptions are separate from hosting.
 - Owner-only standalone sign-in, server-side encrypted API keys, and an optional ChatGPT Sites adapter.
 - A domain guide checks public DNS, HTTPS and this instance. It never collects Cloudflare management tokens or changes your sign-in origin.
+
+Save content to your knowledge base with per-item Markdown exports (available source text or existing AI notes), copy the original link for sharing, and request an AI profile description with suggestions from your current preferences. The interface language does not translate original titles, content, or previously generated notes. See the bilingual [knowledge export and profile guide](docs/knowledge.md).
+
+Need another interface language? Ask your AI to add a translation and send a pull request. 🐕 (Doge) The locale dictionaries live in `shared/locales/`; include the language selector, profile validation, AI output prompts and tests.
 
 Source setup now includes a free curated catalog, AI interest conversations, and editable bulk imports (links, OPML, YouTube CSV and JSON). See the [source guide](docs/sources.md), [OAuth setup guide](docs/authentication.md), and [settings navigation preview](docs/screenshots/settings-sections.png).
 
@@ -56,6 +60,18 @@ Choose from public starter recommendations, talk about your interests with your 
 **Readable owner sign-in**
 
 ![YourFeed demo owner sign-in with large text, clear controls and a spam-folder reminder](docs/screenshots/login.png)
+
+**Keep discoveries in your knowledge base**
+
+Download the available source text or existing AI notes as Markdown, or share the original publisher URL. Optional direct Google Notebook import requires separate consent and API setup; copying the URL and opening Notebook works without it. See [Notebook setup](docs/notebook.md).
+
+![Demo content card with source-text and AI-summary Markdown downloads](docs/screenshots/markdown-export.png)
+
+**Ask AI to reflect on your interests — in your interface language**
+
+An explicit action below the interest weights generates a preference portrait and suggestions, without changing your profile. This Vietnamese interface preview shows the action; it is not a live AI response.
+
+![Vietnamese demo interface for the AI profile and suggestions action](docs/screenshots/profile-advice-vi.png)
 
 ## Who is it for?
 

@@ -13,6 +13,7 @@ import { providerErrorDiagnostic } from './provider-diagnostics';
 import {readSourceImportBody,previewSourceImport,commitSourceImport,validateDiscoveryMessages} from './source-import';
 import {sourceCatalog} from '../shared/source-catalog';
 import {cachedBatchContent,readFeedBatchRequest,rotatedFeedPage,validateFeedBatchInput} from './feed-rotation';
+import {localeFromTag} from '../shared/language';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -25,13 +26,21 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
     if(!['GET','HEAD'].includes(request.method))checkWriteRequest(request);
     await initialize(env);
+    if(path.startsWith('/api/notebook/')){
+      const {handleNotebookApi}=await import('./notebook');
+      return await handleNotebookApi(request,env,userId);
+    }
     if(path==='/api/profile'&&request.method==='GET')return response(await getProfile(env));
     if(path==='/api/profile'&&request.method==='PUT')return response(await saveProfile(env,await readJson(request)));
+    if(path==='/api/profile/advice'&&request.method==='POST'){
+      const {generateProfileAdvice}=await import('./profile-advisor');
+      return response(await generateProfileAdvice(env,userId,await readJson(request)));
+    }
     if(path==='/api/deployment'&&request.method==='GET')return response(await getDeployment(env,request));
     if(path==='/api/deployment'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveDeployment(env,request,await readJson(request)));}
     if(path==='/api/deployment/check'&&request.method==='POST')return response(await checkDeployment(env,request));
     const url=new URL(request.url);
-    const presentationProfile=async()=>{const profile=await getProfile(env);const locale=request.headers.get('accept-language');return locale?{...profile,language:(locale.toLowerCase().startsWith('zh')?'zh':'en') as 'zh'|'en'}:profile;};
+    const presentationProfile=async()=>{const profile=await getProfile(env);const locale=request.headers.get('accept-language');return locale?{...profile,language:localeFromTag(locale)}:profile;};
     if(path==='/api/briefing'&&request.method==='GET'){
       const [items,sources,feedback,lastUpdated]=await Promise.all([listContent(env),listSources(env),readFeedback(env,userId),getState(env,'last-sync')]);
       return response(selectBriefing(items,sources,feedback,new Date(),lastUpdated||undefined,await presentationProfile()));

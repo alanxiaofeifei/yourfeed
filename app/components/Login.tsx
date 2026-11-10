@@ -3,7 +3,7 @@ import { branding } from '../../data/branding';
 
 import { useEffect, useState } from 'react';
 import { ArrowRight, Check, KeyRound, Loader2, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
-import { LanguageToggle, useI18n } from '../i18n';
+import { LanguageToggle, localeTag, useI18n } from '../i18n';
 import ThemeToggle from './ThemeToggle';
 import './Login.css';
 import {allowedLoginProviders,continueSocialLink,LinkContinuationError,linkReauthPath,loginIntent,socialDestination,verifyAndContinue,type SocialProvider} from '../../shared/auth-flow';
@@ -52,7 +52,7 @@ export default function Login(){
   }).catch(()=>{if(!controller.signal.aborted)setError('configuration');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return()=>controller.abort();
  },[retry]);
- const call=async(path:string,body:unknown)=>{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept-Language':language==='zh'?'zh-CN':'en'},body:JSON.stringify(body)});if(!response.ok){let detail:unknown;try{detail=await response.json();}catch{}const data=detail&&typeof detail==='object'?detail as Record<string,unknown>:{};const reason=data.code==='AUTH_EMAIL_SEND_FAILED'&&typeof data.reason==='string'&&Object.hasOwn(mailErrors,data.reason)?data.reason:response.status===429?'request_rate_limited':'';throw new AuthRequestError(reason,response.status);}return response.json() as Promise<{url?:string;success?:boolean}>;};
+ const call=async(path:string,body:unknown)=>{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept-Language':localeTag(language)},body:JSON.stringify(body)});if(!response.ok){let detail:unknown;try{detail=await response.json();}catch{}const data=detail&&typeof detail==='object'?detail as Record<string,unknown>:{};const reason=data.code==='AUTH_EMAIL_SEND_FAILED'&&typeof data.reason==='string'&&Object.hasOwn(mailErrors,data.reason)?data.reason:response.status===429?'request_rate_limited':'';throw new AuthRequestError(reason,response.status);}return response.json() as Promise<{url?:string;success?:boolean}>;};
  const send=async()=>{if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setError('email');return;}setBusy(true);setError('');setMessage('');try{await call('/api/auth/email-otp/send-verification-otp',{email:email.trim(),type:'sign-in'});setSent(true);setOtpVerified(false);setCode('');setMessage('sent');}catch(error){setError(error instanceof AuthRequestError&&error.reason?'mail:'+error.reason:'send');}finally{setBusy(false);}};
  const enterCode=()=>{if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setError('email');return;}setSent(true);setOtpVerified(false);setError('');setMessage('');};
  const verify=async()=>{

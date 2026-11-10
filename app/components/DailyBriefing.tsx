@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { ArrowUpRight, Clock3, Loader2, Newspaper, RefreshCw, Sparkles } from 'lucide-react';
 import type { ContentItem } from '../../shared/types';
 import './DailyBriefing.css';
-import { useI18n } from '../i18n';
+import { useI18n, localeTag } from '../i18n';
+import ContentActions from './ContentActions';
 
 interface Briefing {
   date: string;
@@ -57,7 +58,7 @@ export default function DailyBriefing({ revision, onOpen, onNews }: {
       : !briefing && loading ? <div className="daily-briefing-empty" role="status"><Loader2 size={14} className="spin"/>{t('正在挑选重要信号…','Finding worthwhile signals…')}</div>
       : briefing?.items.length ? <div className="daily-briefing-list">{briefing.items.map(({ item, reason, signal }, index) => {
         const sourceDate = new Date(item.publishedAt);
-        const published = Number.isFinite(sourceDate.getTime()) ? sourceDate.toLocaleDateString(language==='zh'?'zh-CN':'en', { timeZone:briefing?.timeZone||'UTC', month: 'numeric', day: 'numeric' }) : '';
+        const published = Number.isFinite(sourceDate.getTime()) ? sourceDate.toLocaleDateString(localeTag(language), { timeZone:briefing?.timeZone||'UTC', month: 'numeric', day: 'numeric' }) : '';
         return <article className="daily-pick" key={item.id}>
           <span className="daily-pick-number" aria-hidden="true">0{index + 1}</span>
           <div className="daily-pick-content">
@@ -65,6 +66,7 @@ export default function DailyBriefing({ revision, onOpen, onNews }: {
             <button className="daily-pick-open" onClick={() => onOpen(item)}><h3>{item.title}</h3><ArrowUpRight size={14}/></button>
             <p className="daily-pick-summary">{item.analysis?.bullets[0] || item.summary}</p>
             <p className="daily-pick-reason"><Sparkles size={11}/><span><strong>{t('与你有关','Why it matters')}</strong> {reason}</span></p>
+            <ContentActions item={item} onOpen={() => onOpen(item)}/>
           </div>
         </article>;
       })}</div> : <div className="daily-briefing-empty" role="status"><span>{t('暂未发现相关的重要更新。添加来源并更新内容后，会在这里精选。','No relevant major updates yet. Add sources and refresh your library to find daily picks.')}</span></div>}

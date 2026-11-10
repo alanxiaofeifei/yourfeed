@@ -16,7 +16,7 @@ export function matchingProfileGoal(item:ContentItem,profile:UserProfile):string
   return profile.goals.find(goal=>{
     const words=goal.toLowerCase().split(/[\s,，、;；:.!?。！？]+/).filter(word=>word.length>=3&&!stop.has(word));
     if(words.some(word=>text.includes(word)))return true;
-    return item.topics.some(topic=>[topic,TOPIC_LABELS[topic].zh,TOPIC_LABELS[topic].en.toLowerCase(),...topicAliases[topic].toLowerCase().split(' ')].filter(Boolean).some(term=>/^[a-z]{1,3}$/.test(term)?new RegExp('(?:^|[^a-z])'+term+'(?:$|[^a-z])','i').test(goal):goal.toLowerCase().includes(term)));
+    return item.topics.some(topic=>[topic,...Object.values(TOPIC_LABELS[topic]).map(label=>label.toLowerCase()),...topicAliases[topic].toLowerCase().split(' ')].filter(Boolean).some(term=>/^[a-z]{1,3}$/.test(term)?new RegExp('(?:^|[^a-z])'+term+'(?:$|[^a-z])','i').test(goal):goal.toLowerCase().includes(term)));
   });
 }
 export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<string,Feedback>,mode:Mode,kind:string='all',filter:string='all',query:string='',profile?:UserProfile,asOf:number=Date.now()):ContentItem[] {
@@ -27,7 +27,7 @@ export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<st
   const affinity:Partial<Record<Topic,number>>={};
   for(const item of items){const f=feedback[item.id];if(!f)continue;const delta=(f.liked?1:0)+(f.saved?.4:0)-(f.dismissed?1.3:0);for(const topic of item.topics)affinity[topic]=(affinity[topic]||0)+delta/Math.max(1,item.topics.length);}
   const q=query.trim().toLocaleLowerCase();
-  const enriched=items.map(item=>({...item,...feedback[item.id]})).filter(item=>!disabled.has(item.sourceId)&&!(githubDisabled&&item.platform.toLowerCase()==='github')&&!item.dismissed&&(kind==='all'||item.kind===kind)&&(filter==='saved'?item.saved:filter==='liked'?item.liked:filter==='read'?item.read:!item.read)&&(!q||[item.title,item.summary,item.sourceName,...item.topics,...item.topics.map(t=>topicAliases[t]),...item.topics.map(t=>TOPIC_LABELS[t].en)].join(' ').toLocaleLowerCase().includes(q)));
+  const enriched=items.map(item=>({...item,...feedback[item.id]})).filter(item=>!disabled.has(item.sourceId)&&!(githubDisabled&&item.platform.toLowerCase()==='github')&&!item.dismissed&&(kind==='all'||item.kind===kind)&&(filter==='saved'?item.saved:filter==='liked'?item.liked:filter==='read'?item.read:!item.read)&&(!q||[item.title,item.summary,item.sourceName,...item.topics,...item.topics.map(t=>topicAliases[t]),...item.topics.flatMap(t=>Object.values(TOPIC_LABELS[t]))].join(' ').toLocaleLowerCase().includes(q)));
   const now=asOf;
   return enriched.map(item=>{
     const weight=(topic:Topic)=>profile?(profile.topicWeights[topic]||0)*(mode==='rest'?(['making','cooking','science','humanities'].includes(topic)?1:.8):1):(topics[mode][topic]||0);
@@ -40,10 +40,16 @@ export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<st
     const platformBalance=1/Math.sqrt(Math.max(1,frequencies.get(item.platform)||1));
     const goal=profile?matchingProfileGoal(item,profile):undefined;
     const score=interest*7+feedbackBoost*3+(item.liked?8:0)+(item.saved?3:0)+fresh*(item.kind==='news'?2:1)+platformBalance+(goal?1.5:0);
-    const english=profile?.language==='en';
-    const ruleReason=english?(item.liked?'Content you liked':item.saved?'Saved for later':goal?`Matches your goal: ${goal}`:matches.length?`${mode==='rest'?'A change of pace: ':'Related to your interests: '}${matches.slice(0,2).map(t=>topicLabel(t,'en')).join(' · ')}`:'From a source you selected'):(item.liked?'你喜欢的内容':item.saved?'已加入稍后看':goal?`与你的目标相关：${goal}`:matches.length?`${mode==='rest'?'换个脑子，看看':'与你的进阶方向相关：'}${matches.slice(0,2).map(t=>profile?topicLabel(t,'zh'):topicNames[t]).join(' · ')}`:'来自你选择的内容来源');
-    // Retained summaries are never translated merely because the UI locale changes.
-    const useAnalysis=!profile||(profile.language===profile.summaryLanguage&&(english?!/[\u4e00-\u9fff]/.test(item.analysis?.relevance||''):true));
+    const language=profile?.language||'zh';
+    const labels=matches.slice(0,2).map(topic=>profile?topicLabel(topic,language):topicNames[topic]).join(' · ');
+    const ruleReason=({
+      zh:item.liked?'你喜欢的内容':item.saved?'已加入稍后看':goal?`与你的目标相关：${goal}`:matches.length?`${mode==='rest'?'换个脑子，看看':'与你的进阶方向相关：'}${labels}`:'来自你选择的内容来源',
+      'zh-TW':item.liked?'你喜歡的內容':item.saved?'已加入稍後看':goal?`與你的目標相關：${goal}`:matches.length?`${mode==='rest'?'換個腦袋，看看':'與你的學習方向相關：'}${labels}`:'來自你選擇的內容來源',
+      en:item.liked?'Content you liked':item.saved?'Saved for later':goal?`Matches your goal: ${goal}`:matches.length?`${mode==='rest'?'A change of pace: ':'Related to your interests: '}${labels}`:'From a source you selected',
+      vi:item.liked?'Nội dung bạn thích':item.saved?'Đã lưu để xem sau':goal?`Phù hợp với mục tiêu của bạn: ${goal}`:matches.length?`${mode==='rest'?'Đổi không khí: ':'Liên quan đến sở thích của bạn: '}${labels}`:'Từ nguồn bạn đã chọn',
+    })[language];
+    // Retained summaries keep their original language; use rules when the interface differs.
+    const useAnalysis=!profile||(profile.language===profile.summaryLanguage&&(!item.analysis?.summaryLanguage||item.analysis.summaryLanguage===profile.language)&&((language==='en'||language==='vi')?!/[\u4e00-\u9fff]/.test(item.analysis?.relevance||''):true));
     const reason=(useAnalysis?item.analysis?.relevance:undefined)||ruleReason;
     return {item:{...item,reason},score};
   }).sort((a,b)=>b.score-a.score||a.item.id.localeCompare(b.item.id)).map(x=>x.item);
