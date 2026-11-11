@@ -22,7 +22,6 @@
       "enabled": true,
       "invocation_logs": false
     },
-    "redact_query_string": true,
     "traces": {
       "enabled": true,
       "head_sampling_rate": 0.1
