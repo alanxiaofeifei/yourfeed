@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const STATE='.yourfeed-core.json', MAX_FILE=2*1024*1024;
-export const CORE_PATTERNS=['server/**','shared/**','app/components/**','app/i18n.tsx','app/page.tsx','app/layout.tsx','app/globals.css','worker/index.ts','vite.config.ts','scripts/build.mjs','db/schema.ts','drizzle/**','tests/**','scripts/update-core.mjs','.github/workflows/core-update.yml'];
+export const CORE_PATTERNS=['server/**','shared/**','app/components/**','app/i18n.tsx','app/page.tsx','app/layout.tsx','app/globals.css','worker/index.ts','vite.config.ts','scripts/build.mjs','db/schema.ts','drizzle/**','tests/**','scripts/update-core.mjs','scripts/preflight.mjs','scripts/deploy.mjs','.github/workflows/core-update.yml'];
 const protectedPaths=/^(?:\.git(?:\/|$)|\.openai(?:\/|$)|\.wrangler(?:\/|$)|\.env|\.dev\.vars|data(?:\/|$)|node_modules(?:\/|$)|dist(?:\/|$)|wrangler[^/]*\.(?:jsonc?|toml)$|\.yourfeed-(?:sync|core)\.json$)/;
 export const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export function validRepository(value){return typeof value==='string'&&/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(value)&&!value.split('/').some(part=>part==='.'||part==='..');}

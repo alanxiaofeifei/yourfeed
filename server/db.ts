@@ -4,6 +4,8 @@ import { encryptSecret, decryptSecret, HttpError, providerName } from './securit
 import { validateProviderBaseUrl } from './provider-endpoint';
 import { getProfile } from './profile';
 import { profileDate } from '../shared/profile';
+import {isHosted} from './hosted';
+import {honestContent} from '../shared/content-coverage';
 export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
 export const DEFAULT_MODELS: Record<Provider,string> = {openai:'gpt-6.1-sol',deepseek:'deepseek-flash',glm:'glm-5.3',custom:''};
 export const defaultConfig: ProviderConfig = {provider:'openai',model:DEFAULT_MODELS.openai,protocol:'responses',responseFormat:'json_schema',reasoningEffort:'low',maxOutputTokens:2048,timeoutSeconds:25,enabled:false,monthlyBudget:20,dailyLimit:20};
@@ -18,9 +20,50 @@ export async function initialize(env:Env):Promise<void> {
   // Fresh deployments start empty; owners add sources or import content explicitly.
   await setState(env,'seeded-v1',new Date().toISOString());
 }
-export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC LIMIT 4000').all<{json:string}>();return r.results.map(r=>JSON.parse(r.json)); }
+/** Recommendation candidates only. Library/history use keyset SQL in library.ts. */
+export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC,id DESC LIMIT 1000').all<{json:string}>();return r.results.map(r=>honestContent(JSON.parse(r.json))); }
+export async function getContentById(env:Env,id:string):Promise<ContentItem|null> {
+  if(!id||id.length>200)return null;
+  const row=await env.DB.prepare('SELECT json FROM content WHERE id=? OR id=(SELECT content_id FROM content_aliases WHERE alias=?) ORDER BY (id=?) DESC LIMIT 1').bind(id,id,id).first<{json:string}>();
+  return row?honestContent(JSON.parse(row.json)):null;
+}
+export async function databaseStorage(env:Env) {
+  // D1 disallows page_count/page_size PRAGMAs. Its documented result metadata
+  // exposes physical database bytes even for this harmless read-only statement.
+  const result=await env.DB.prepare('SELECT 1').run();
+  const bytes=Number(result.meta.size_after);
+  if(!Number.isFinite(bytes)||bytes<0)throw new HttpError(503,'无法确认内容库存储容量，已暂停新增内容。');
+  return {databaseBytes:bytes,warningBytes:300*1024*1024,limitBytes:isHosted(env)?400*1024*1024:null};
+}
+async function reserveNewHostedContent(env:Env,items:ContentItem[]):Promise<void> {
+  if(!isHosted(env)||!items.length)return;
+  const ids=[...new Set(items.map(item=>item.id))],existing=new Set<string>();
+  for(let i=0;i<ids.length;i+=75){const chunk=ids.slice(i,i+75);const rows=await env.DB.prepare('SELECT id FROM content WHERE id IN ('+chunk.map(()=>'?').join(',')+')').bind(...chunk).all<{id:string}>();for(const row of rows.results)existing.add(row.id);}
+  const count=ids.filter(id=>!existing.has(id)).length;if(!count)return;
+  const key='hosted:new-content:'+new Date().toISOString().slice(0,10);
+  const reserved=await env.DB.prepare('INSERT INTO meta(key,value) SELECT ?,CAST(? AS TEXT) WHERE ?<=250 ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(meta.value AS INTEGER)+? AS TEXT) WHERE CAST(meta.value AS INTEGER)+?<=250 RETURNING value').bind(key,count,count,count,count).first();
+  if(!reserved)throw new HttpError(429,'已达到免费托管每日 250 条新内容上限，待处理内容将在之后继续更新。');
+  // Reservations are deliberately conservative if a write later fails. Retries
+  // never reset a budget or make uncertain work exceed the daily limit.
+}
 export async function upsertContent(env:Env,items:ContentItem[]):Promise<void> {
-  for(let i=0;i<items.length;i+=75)await env.DB.batch(items.slice(i,i+75).map(item=>env.DB.prepare("INSERT INTO content(id,source_id,kind,url,json,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source_id=excluded.source_id,kind=excluded.kind,url=excluded.url,json=CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN json_patch(content.json,excluded.json) ELSE excluded.json END,updated_at=excluded.updated_at").bind(item.id,item.sourceId,item.kind,item.url,JSON.stringify(item),new Date().toISOString())));
+  if(isHosted(env)&&items.length&&(await databaseStorage(env)).databaseBytes>=400*1024*1024)throw new HttpError(429,'内容库接近免费存储上限，请先导出或清理缓存；登录、阅读和反馈仍可使用。');
+  await reserveNewHostedContent(env,items);
+  // Each batch stays below Free plan's 50 statements. Never replace content IDs:
+  // aliases/provenance enrich old rows while feedback continues to reference them.
+  for(let i=0;i<items.length;i+=5){
+    const statements=[];
+    for(const item of items.slice(i,i+5)){
+      const now=new Date().toISOString(),json=JSON.stringify(item);
+      statements.push(env.DB.prepare("INSERT OR IGNORE INTO content_sources(content_id,source_id,name,url,first_seen_at,last_seen_at) SELECT id,source_id,COALESCE(json_extract(json,'$.sourceName'),source_id),url,updated_at,updated_at FROM content WHERE id=?").bind(item.id));
+      statements.push(env.DB.prepare("INSERT INTO content(id,source_id,kind,url,json,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,url=excluded.url,json=json_set(CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN json_patch(content.json,excluded.json) ELSE excluded.json END,'$.sourceId',content.source_id,'$.sourceName',COALESCE(json_extract(content.json,'$.sourceName'),json_extract(excluded.json,'$.sourceName')),'$.publishedAt',CASE WHEN json_extract(excluded.json,'$.dateSource')='missing' THEN json_extract(content.json,'$.publishedAt') ELSE json_extract(excluded.json,'$.publishedAt') END),updated_at=CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN content.updated_at ELSE excluded.updated_at END").bind(item.id,item.sourceId,item.kind,item.url,json,now));
+      statements.push(env.DB.prepare("INSERT INTO content_sources(content_id,source_id,name,url,first_seen_at,last_seen_at) VALUES (?,?,?,?,?,?) ON CONFLICT(content_id,source_id) DO UPDATE SET name=excluded.name,url=excluded.url,last_seen_at=excluded.last_seen_at").bind(item.id,item.sourceId,item.sourceName,item.url,now,now));
+      statements.push(env.DB.prepare("UPDATE content SET json=json_set(json,'$.relatedSources',json((SELECT json_group_array(json_object('name',name,'url',url)) FROM (SELECT name,url FROM content_sources WHERE content_id=? ORDER BY first_seen_at,source_id)))) WHERE id=?").bind(item.id,item.id));
+      const indexedText="COALESCE(json_extract(c.json,'$.title'),'')||char(10)||COALESCE(json_extract(c.json,'$.summary'),'')||char(10)||COALESCE(json_extract(c.json,'$.body'),'')||char(10)||COALESCE(json_extract(c.json,'$.sourceName'),'')||char(10)||COALESCE(json_extract(c.json,'$.analysis'),'')";
+      statements.push(env.DB.prepare(`INSERT OR REPLACE INTO content_search(rowid,content_id,text) SELECT c.rowid,c.id,${indexedText} FROM content c WHERE c.id=? AND NOT EXISTS(SELECT 1 FROM content_search WHERE rowid=c.rowid AND text=(${indexedText}))`).bind(item.id));
+    }
+    await env.DB.batch(statements);
+  }
 }
 export async function listSources(env:Env):Promise<Source[]> {const r=await env.DB.prepare('SELECT json FROM sources').all<{json:string}>();return r.results.map(r=>JSON.parse(r.json));}
 export async function updateSource(env:Env,source:Source):Promise<void> {await env.DB.prepare('INSERT INTO sources(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind(source.id,JSON.stringify(source)).run();}
@@ -36,6 +79,8 @@ export async function getConfig(env:Env,forProvider?:Provider):Promise<ProviderC
 export async function getSecret(env:Env,id:string):Promise<string|undefined> {
   const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('key:'+id).first<{json:string}>();
   if(row){const data=JSON.parse(row.json);if(id==='custom'&&data.boundBaseUrl!==(await getConfig(env,'custom')).baseUrl)throw new HttpError(400,'自定义地址已变化，请重新保存用于该地址的密钥。');return decryptSecret(data.cipher,env.APP_ENCRYPTION_KEY,(typeof env.SECRET_NAMESPACE==='string'?env.SECRET_NAMESPACE:'yourfeed')+':'+id);}
+  // Hosted users must configure their own encrypted instance credential.
+  if(isHosted(env))return undefined;
   const name:Record<string,string>={openai:'OPENAI_API_KEY',deepseek:'DEEPSEEK_API_KEY',glm:'GLM_API_KEY',youtube:'YOUTUBE_API_KEY'};
   return typeof env[name[id]]==='string'?String(env[name[id]]):id==='glm'&&typeof env.ZHIPUAI_API_KEY==='string'?env.ZHIPUAI_API_KEY:undefined;
 }

@@ -1,4 +1,5 @@
 import {languageName} from '../shared/language';
+import {honestContent} from '../shared/content-coverage';
 import { z } from 'zod';
 import type { Analysis, ContentItem, Provider, ProviderConfig, Topic } from '../shared/types';
 import { getConfig, getProviderKey, getAnalysisCache, saveAnalysisCache, listContent, listSources, readFeedback, upsertContent, reserveUsage, settleUsage, usagePeriod, type Env } from './db';
@@ -55,7 +56,7 @@ export function sourceCoverage(item: ContentItem): Analysis['coverage'] {
   // Descriptions and project metadata are never presented as watched/read source media.
   if (item.kind === 'video' || item.kind === 'project') return 'metadata';
   if (item.kind === 'news' && item.parentId) return 'excerpt';
-  if (item.body && textOnly(item.body).length > 160 && textOnly(item.body).length <= MAX_SOURCE_CHARS) return 'full_text';
+  if (item.contentCoverage === 'full' && !item.truncated && item.body && textOnly(item.body).length <= MAX_SOURCE_CHARS) return 'full_text';
   return item.summary || item.body ? 'excerpt' : 'metadata';
 }
 export function sourceReferences(item: ContentItem): string[] {
@@ -70,7 +71,7 @@ export function sourceReferences(item: ContentItem): string[] {
   return [...urls];
 }
 export async function contentFingerprint(item: ContentItem): Promise<string> {
-  const data = JSON.stringify(['analysis-v1', item.kind, item.title, item.url, item.summary, item.body || '']);
+  const data = JSON.stringify(['analysis-v2-coverage', item.kind, item.title, item.url, item.summary, item.body || '',item.contentCoverage||'unknown',item.truncated===true,item.retrievalMethod||'unknown']);
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data)))).map(v => v.toString(16).padStart(2, '0')).join('');
 }
 export function estimateCost(provider: Provider, model: string, input: number, output: number, config?: Partial<ProviderConfig>): number {
@@ -114,14 +115,15 @@ async function analysisFingerprint(item:ContentItem,config:ProviderConfig,profil
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 }
 function promptFor(item: ContentItem,profile:UserProfile): string {
-  return JSON.stringify({ required_output:{bullets:['One to three concise points in the requested output language'],relevance:'Specific relevance to the supplied user interests and goals',topics:['Select at most eight allowed_topics identifiers'],references:['Select only actual URLs from allowed_references']},user_profile:{goals:profile.goals,topic_weights:profile.topicWeights,summary_language:profile.summaryLanguage},allowed_topics:TOPICS,coverage: sourceCoverage(item), allowed_references: sourceReferences(item), untrusted_source: { title: item.title, kind: item.kind, source: item.sourceName, url: item.url, topics: item.topics, text: textOnly(item.body || item.summary || '').slice(0, MAX_SOURCE_CHARS) } });
+  return JSON.stringify({ required_output:{bullets:['One to three concise points in the requested output language'],relevance:'Specific relevance to the supplied user interests and goals',topics:['Select at most eight allowed_topics identifiers'],references:['Select only actual URLs from allowed_references']},user_profile:{goals:profile.goals,topic_weights:profile.topicWeights,summary_language:profile.summaryLanguage},allowed_topics:TOPICS,coverage: sourceCoverage(item),source_coverage:item.contentCoverage||'unknown',retrieval_method:item.retrievalMethod||'unknown',input_truncated:item.truncated===true||textOnly(item.body||item.summary||'').length>MAX_SOURCE_CHARS, allowed_references: sourceReferences(item), untrusted_source: { title: item.title, kind: item.kind, source: item.sourceName, url: item.url, topics: item.topics, text: textOnly(item.body || item.summary || '').slice(0, MAX_SOURCE_CHARS) } });
 }
 export function validateAnalysis(value: unknown, item: ContentItem, model: string,profile?:UserProfile): Analysis {
   const parsed = analysisSchema.safeParse(value);
   if (!parsed.success) throw new HttpError(502, '模型返回的摘要格式不完整，请稍后重试。');
   const allowed = new Set(sourceReferences(item));
   if (parsed.data.references.some(url => !allowed.has(url))) throw new HttpError(502, '模型引用了资料中不存在的来源，本次摘要未保存。');
-  return { ...parsed.data, coverage: sourceCoverage(item), model,...(profile?{summaryLanguage:profile.summaryLanguage,profileVersion:profile.version}:{}) };
+  const originalChars=textOnly(item.body||item.summary||'').length;
+  return { ...parsed.data, coverage: sourceCoverage(item), model,inputTruncated:originalChars>MAX_SOURCE_CHARS||item.truncated===true,inputChars:Math.min(originalChars,MAX_SOURCE_CHARS),originalChars,...(profile?{summaryLanguage:profile.summaryLanguage,profileVersion:profile.version}:{}) };
 }
 
 interface ModelResult { text: string; inputTokens: number; outputTokens: number; usageKnown: boolean; issue?:ProviderDiagnostic; }
@@ -356,7 +358,7 @@ export async function analyzeItem(env: Env, item: ContentItem): Promise<ContentI
   if (!key) throw new HttpError(400, '请先在私有设置页保存所选服务商的 API 密钥。');
   const profile=await getProfile(env);const fingerprint = await analysisFingerprint(item,config,profile);
   const cached = await getAnalysisCache(env,item.id,fingerprint,config.provider,config.model);
-  if (cached) { const updated={...item,analysis:cached};await upsertContent(env,[updated]);return updated; }
+  if (cached) { const updated=honestContent({...item,analysis:cached});await upsertContent(env,[updated]);return updated; }
   const prompt = promptFor(item,profile);const {reservationId} = await reserve(env,config,item.id,prompt,false,profile);
   let result: ModelResult;
   try { result = await callModel(config,key,prompt,false,profile); }

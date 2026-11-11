@@ -22,6 +22,22 @@ function articleUrl(url:string,parentUrls:Set<string>):boolean {
 function provenance(item:ContentItem):Provenance[]{
   return [{name:item.sourceName,url:item.url},...(item.relatedSources||[])];
 }
+/** Shared by initial recommendations and rotated batches. Only presentation is
+ * collapsed: stored IDs, feedback, versions and every source remain available. */
+export function deduplicateFeed(items:ContentItem[],allItems:ContentItem[]=items,excludedIds?:ReadonlySet<string>):ContentItem[] {
+  const result:ContentItem[]=[],seen=new Map<string,ContentItem>();
+  for(const item of groupNews(items,allItems,excludedIds)){
+    if(item.kind==='news'){result.push(item);continue;}
+    const url=canonical(item.url),key=url?item.kind+'\n'+url+'\n'+numberKey(item.title):undefined;
+    if(!key){result.push(item);continue;}
+    const old=seen.get(key);
+    if(!old){const copy={...item};seen.set(key,copy);result.push(copy);continue;}
+    const sources=[...provenance(old),...provenance(item)];
+    old.relatedSources=[...new Map(sources.map(ref=>[ref.name+'\n'+ref.url,ref])).values()];
+    old.liked=old.liked||item.liked;old.saved=old.saved||item.saved;old.read=old.read||item.read;
+  }
+  return result;
+}
 interface Group {items:ContentItem[];keys:Set<string>;first:number;last:number;}
 export function groupNews(items:ContentItem[],allItems:ContentItem[]=items,excludedIds?:ReadonlySet<string>):ContentItem[] {
   const byId=new Map(allItems.map(item=>[item.id,item]));

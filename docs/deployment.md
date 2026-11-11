@@ -3,7 +3,7 @@
 ## Cloudflare Deploy Button
 
 1. Open [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed). Choose your account, repository and Worker name. The source repository must be public; your copied repository can be managed according to your needs.
-2. Keep the detected build command `npm run build` and deploy command `npm run deploy`. Cloudflare provisions the `DB` D1 binding and updates its placeholder ID. The deploy script runs `wrangler d1 migrations apply DB --remote` before publishing the built Worker. Review the new database ID; the all-zero source ID is only a template placeholder.
+2. Keep the detected build command `npm run build` and deploy command `npm run deploy`. Cloudflare provisions the `DB` D1 binding and updates its placeholder ID. Set `YOURFEED_DEPLOY_MODE=initial`, your explicit `CLOUDFLARE_ACCOUNT_ID`, and the final `AUTH_BASE_URL`. The guarded deploy checks that the target DB is empty before applying migrations. Review the actual database ID; the all-zero source ID is only a template placeholder. An existing database requires the release workflow below, not initial mode.
 3. Set `OWNER_EMAIL` to **your own verified sign-in email**. It is the recipient for email codes, not a sending address such as `onboarding@resend.dev`. Generate **two different** values with `openssl rand -hex 32`: `APP_ENCRYPTION_KEY` and `AUTH_SECRET`. Keep both in private backup. Set `AUTH_BASE_URL` to the final HTTPS origin, without a path. If you do not yet know the workers.dev origin, finish deployment, find it in the dashboard, correct the setting, then redeploy. The app stays closed until configuration works.
 4. Choose Google or GitHub OAuth below. Email OTP is optional. Set credentials through Worker secrets, never in committed configuration. Redeploy after changing bindings.
 5. Open the site and sign in as the owner. Another email is denied. Complete the interest onboarding, add sources, and optionally configure AI in the private settings page.
@@ -52,7 +52,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-For remote deployment set secret bindings using `npx wrangler secret put NAME`; place non-secret settings such as `AUTH_MODE=standalone` and the final `AUTH_BASE_URL` in your private config or dashboard. Then run `npm run build` followed by `npm run deploy`. Review which account and database the commands target. The `DB` binding must retain this name even if you rename the database.
+For remote deployment set secret bindings using `npx wrangler secret put NAME`; place non-secret settings such as `AUTH_MODE=standalone` and the final `AUTH_BASE_URL` in your private config or dashboard. Then run `npm run build`, `npm run deploy:dry-run`, and `npm run deploy`. `deploy:dry-run` validates local target settings without contacting Cloudflare; it does not prove the remote database is empty or recoverable. The live command first performs read-only remote checks. Review which account and database the commands target. The `DB` binding must retain this name even if you rename the database.
 
 ## Optional ChatGPT Sites adapter
 
@@ -66,3 +66,50 @@ Sites owner access is managed in ChatGPT; this adapter does not convert it into 
 - [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
 - [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [Sites management](https://learn.chatgpt.com/docs/sites/managing-a-site)
+
+
+## Reviewed updates and preview isolation
+
+`npm run deploy` and `npm run db:migrate:remote` share the same target guard. The migration-only command does not publish code. Direct Wrangler commands can bypass this guard; operators are responsible for restricting credentials and workflow permissions.
+
+For an existing production instance:
+
+1. Commit the reviewed source. Build it and record its complete SHA.
+2. Verify the actual account, Worker, D1 binding and applied migrations with a read-only query. Check the complete application schema/health as well; a migration name alone is not proof that all required structures exist.
+3. Verify a private database backup and a supported recovery procedure. Keep the encryption master key separately. A checked box without a restore rehearsal is not recovery evidence.
+4. Store a release manifest **outside the repository**, containing metadata only:
+
+```json
+{
+  "version": 1,
+  "accountId": "YOUR_32_HEX_ACCOUNT_ID",
+  "worker": "your-worker",
+  "databaseId": "YOUR-ACTUAL-D1-UUID",
+  "origin": "https://your-worker.example.workers.dev",
+  "sourceSha": "COMPLETE_40_CHARACTER_COMMIT_SHA",
+  "appliedMigrations": ["0000_initial.sql", "0001_auth.sql"],
+  "previousCodeVersion": "PREVIOUS_WORKER_VERSION_ID",
+  "backupRef": "PRIVATE_BACKUP_OR_TIME_TRAVEL_REFERENCE",
+  "recoveryVerified": true
+}
+```
+
+Use the actual migration filenames from your database and checkout; the example is not a command to reset migration history. Do not put tokens, owner addresses, database contents or key values in this file. Set `YOURFEED_DEPLOY_MODE=release` and `YOURFEED_RELEASE_MANIFEST=/absolute/private/path/release.json`, then run the dry run. The live deployment checks the target's migration list has not changed, applies pending migrations, verifies the resulting list, then publishes the built Worker. If publishing fails, migrations may already have applied: inspect state before retrying.
+
+Cloudflare Builds can deploy after a production-branch push. Configure a **separate Worker, DB, keys and origin** for preview builds. Never run the production deploy command with a preview branch or a production DB binding. `WORKERS_CI_BRANCH`/`CF_PAGES_BRANCH` and `YOURFEED_PREVIEW=true` block accidental use of the production script, but a branch check is not a substitute for separate credentials and databases. No automatic production migration runs in this repository's CI workflow.
+
+中文：首次部署用 `initial`，只允许空数据库；已有实例用 `release`，必须先有备份、恢复验证、完整提交和目标清单。`deploy:dry-run` 只读本地配置，不联网，不等于生产检查通过。预览必须独立数据库和密钥。发布失败也可能已经迁移数据库，不能直接当作“没有变化”。
+
+## Deployment destinations and honest buttons
+
+| Platform | Current project status | Entry |
+|---|---|---|
+| Cloudflare | Native Worker/D1 target with official repository-copy button; requires sign-in/API configuration and a clean-account acceptance run | [Official Deploy Button](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed) |
+| ChatGPT Sites | Existing adapter; requires Sites access, new Site identity, private manifest, independent storage and secrets | [Sites guide](https://learn.chatgpt.com/docs/sites/creating-a-site); no verified generic GitHub deploy-button URL |
+| Vercel | Runtime and DB port required; not a drop-in ordinary Next.js app | [Official Deploy Button docs](https://vercel.com/docs/deploy-button), for a future tested port only |
+| Railway | Node/container and DB adapter/template required | [Template documentation](https://docs.railway.com/templates/publish-and-share), no current project template |
+| Claude Artifacts | Interactive artifacts are not equivalent to an independent arbitrary Worker/D1 deployment | [Official product description](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them) |
+| Kimi Build | Official full-stack website capabilities exist, but this project's OAuth/DB/runtime compatibility is not verified | [Official overview](https://www.kimi.com/help/websites/websites-overview) |
+| QwenWork | Official dynamic Node/database hosting exists; this project's port, secrets, OAuth and background tasks are unverified | [Official website documentation](https://www.alibabacloud.com/help/zh/qwenwork/my-webpage) |
+
+Do not add “available” buttons for unported platforms, copy the developer's Cloudflare account/data, or publish AlanFeed as a public template. A future Sites template must be built from sanitized public YourFeed source, create a new Site with a new DB/key/owner, and pass real deployment acceptance before advertising it.

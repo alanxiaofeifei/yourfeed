@@ -35,7 +35,10 @@ export function canonicalUrl(input:string):string{
  if(u.hostname==='twitter.com')u.hostname='x.com';
  return u.toString();
 }
-export async function fetchSafe(input:string, options:{headers?:Record<string,string>;maxBytes?:number;timeout?:number;resolver?:PublicDnsResolver;maxRedirects?:number;sameOriginRedirects?:boolean}={}):Promise<{response:Response;text:string,url:string}>{
+export class SourceHttpError extends Error {
+ constructor(public readonly status:number,public readonly retryAfter?:string){super(`来源暂时无法读取（HTTP ${status}）。`);this.name='SourceHttpError';}
+}
+export async function fetchSafe(input:string, options:{headers?:Record<string,string>;maxBytes?:number;timeout?:number;resolver?:PublicDnsResolver;maxRedirects?:number;sameOriginRedirects?:boolean;allowNotModified?:boolean;method?:'GET'|'HEAD'}={}):Promise<{response:Response;text:string,url:string}>{
  let u=validatePublicUrl(input);
  const headers={'User-Agent':'Mozilla/5.0 (compatible; YourFeed/1.0; personal reader)',...options.headers};
  const credentialed=Object.keys(options.headers||{}).some(k=>CREDENTIAL_HEADER.test(k));
@@ -47,7 +50,8 @@ export async function fetchSafe(input:string, options:{headers?:Record<string,st
  const maxRedirects=Math.min(3,Math.max(0,Math.floor(options.maxRedirects??3)));
  for(let n=0;n<=maxRedirects;n++){
   u=await resolveContentUrl(u.toString(),options.resolver);
-  const response=await fetch(u.toString(),{headers,redirect:'manual',signal});
+  const response=await fetch(u.toString(),{headers,redirect:'manual',signal,...(options.method?{method:options.method}:{})});
+  if(response.status===304&&options.allowNotModified){await response.body?.cancel();return {response,text:'',url:u.toString()};}
   if(response.status>=300&&response.status<400){
    const location=response.headers.get('location');await response.body?.cancel();
    if(!location)throw new Error('来源返回了无效跳转。');
@@ -57,8 +61,9 @@ export async function fetchSafe(input:string, options:{headers?:Record<string,st
    if(options.sameOriginRedirects&&next.origin!==u.origin)throw new Error('来源发现不允许跨站跳转。');
    u=next;continue;
   }
-  if(!response.ok){await response.body?.cancel();throw new Error(`来源暂时无法读取（HTTP ${response.status}）。`);}
-  const limit=Math.min(2_000_000,Math.max(1,options.maxBytes||2_000_000));const length=Number(response.headers.get('content-length')||0);
+  if(!response.ok){await response.body?.cancel();throw new SourceHttpError(response.status,response.headers.get('retry-after')||undefined);}
+  if(options.method==='HEAD'){await response.body?.cancel();return {response,text:'',url:u.toString()};}
+  const limit=Math.min(4_000_000,Math.max(1,options.maxBytes||2_000_000));const length=Number(response.headers.get('content-length')||0);
   if(length>limit){await response.body?.cancel();throw new Error('来源内容过大，暂不导入。');}
   const reader=response.body?.getReader();if(!reader)return {response,text:'',url:u.toString()};
   const decoder=new TextDecoder();let text='',bytes=0;
@@ -68,4 +73,6 @@ export async function fetchSafe(input:string, options:{headers?:Record<string,st
  throw new Error('来源跳转过多。');
 }
 export function plainText(html:string):string{return sanitizeHtml(String(html||''),{allowedTags:[],allowedAttributes:{},nonTextTags:['style','script','textarea','option','noscript']}).replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();}
+/** Safe paragraph breaks for reading and Markdown; no source HTML is trusted. */
+export function plainTextBlocks(html:string):string{return cleanHtml(String(html||'')).replace(/<br\s*\/?\s*>|<\/(?:p|h2|h3|h4|li|blockquote|pre)>/gi,'\n').split(/\n+/).map(line=>plainText(line)).filter(Boolean).join('\n\n');}
 export function cleanHtml(html:string):string{return sanitizeHtml(html,{allowedTags:['p','br','h2','h3','h4','ul','ol','li','strong','em','blockquote','a','code','pre'],allowedAttributes:{a:['href','title','rel','target']},allowedSchemes:['https'],transformTags:{a:(_tag,attrs)=>({tagName:'a',attribs:{href:attrs.href||'',rel:'noopener noreferrer',target:'_blank'}})}});}

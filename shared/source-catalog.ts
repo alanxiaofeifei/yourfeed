@@ -11,13 +11,15 @@ export interface SourceCatalogEntry {
  contentType: 'news' | 'article' | 'video';
  description: { zh: string; en: string };
  requiresApi?: 'youtube';
+ starter?:boolean;
+ verification:{status:'verified'|'needs-adapter'|'unverified';checkedAt?:string;format?:'RSS'|'Atom'|'RDF';items?:number;coverage:'metadata'|'excerpt'|'unknown';note?:{zh:string;en:string}};
 }
 
-// RSS endpoints returned HTTP 200 and parsed as RSS/Atom on 2026-11-10.
+// Per-entry validation below distinguishes inspected feeds from legacy suggestions.
 // Practical Engineering's channel ID is linked by https://practical.engineering/.
 // YouTube feed access itself is blocked by this execution environment; API access
 // is tested separately once the owner supplies a YouTube Data API key.
-export const sourceCatalog: SourceCatalogEntry[] = [
+const legacyCatalog: Omit<SourceCatalogEntry,'verification'>[] = [
  {
   id:'juya-daily', name:'橘鸦 AI 早报', platform:'rss', locator:'https://daily.juya.uk/rss.xml',
   topics:['ai','automation','tools'], language:'zh', contentType:'news',
@@ -68,4 +70,31 @@ export const sourceCatalog: SourceCatalogEntry[] = [
   topics:['making','science'], language:'en', contentType:'video', requiresApi:'youtube',
   description:{zh:'通过模型和实验解释工程与基础设施。自动更新需要配置 YouTube API Key。',en:'Models and experiments that explain engineering and infrastructure. Automatic updates need a YouTube API key.'},
  },
+];
+
+const checkedAt='2026-11-10T16:25:00.000Z';
+const checked:Record<string,{format:'RSS'|'Atom'|'RDF';items:number}>={
+ 'juya-daily':{format:'RSS',items:10},sspai:{format:'RSS',items:10},ruanyifeng:{format:'Atom',items:3},'github-blog':{format:'RSS',items:10},'google-research':{format:'RSS',items:100},nasa:{format:'RSS',items:10},'bbc-science':{format:'RSS',items:41},
+};
+const starters=new Set(['juya-daily','sspai','openai-news','google-research','github-blog','nasa','simon-willison','julia-evans']);
+const additional: Array<{id:string;name:string;locator:string;topics:Topic[];language:'zh'|'en';format:'RSS'|'Atom'|'RDF';items:number;coverage?:'metadata'|'excerpt'|'unknown';needsAdapter?:boolean;zh:string;en:string}>=[
+ {id:'openai-news',name:'OpenAI News',locator:'https://openai.com/news/rss.xml',topics:['ai','tools'],language:'en',format:'RSS',items:1375,zh:'OpenAI 官方更新；订阅通常提供摘要与来源链接。',en:'Official OpenAI updates, usually with excerpts and source links.'},
+ {id:'deepmind',name:'Google DeepMind',locator:'https://deepmind.google/blog/rss.xml',topics:['ai','science'],language:'en',format:'RSS',items:100,zh:'DeepMind 官方研究与产品动态。',en:'Official research and product updates from DeepMind.'},
+ {id:'huggingface',name:'Hugging Face Blog',locator:'https://huggingface.co/blog/feed.xml',topics:['ai','code'],language:'en',format:'RSS',items:901,coverage:'metadata',zh:'开源模型和工具；部分条目仅提供标题、日期和链接。',en:'Open models and tools. Some entries contain only a title, date, and link.'},
+ {id:'github-changelog',name:'GitHub Changelog',locator:'https://github.blog/changelog/feed/',topics:['code','tools'],language:'en',format:'RSS',items:10,zh:'GitHub 官方功能更新记录。',en:'Official GitHub feature announcements.'},
+ {id:'cloudflare-blog',name:'Cloudflare Blog',locator:'https://blog.cloudflare.com/rss/',topics:['network','code','it'],language:'en',format:'RSS',items:20,zh:'网络、安全与开发平台的官方技术文章。',en:'First-party articles about networking, security, and developer platforms.'},
+ {id:'python-blog',name:'Python Blog',locator:'https://blog.python.org/feeds/posts/default',topics:['code'],language:'en',format:'RSS',items:50,zh:'Python 官方发布与社区动态；语言按样本判断。',en:'Official Python releases and community updates; language inferred from samples.'},
+ {id:'nature',name:'Nature',locator:'https://www.nature.com/nature.rss',topics:['science'],language:'en',format:'RDF',items:75,zh:'Nature 科学新闻与研究摘要；部分原文需要付费。',en:'Nature science news and research excerpts. Some original articles require a subscription.'},
+ {id:'arxiv-ai',name:'arXiv cs.AI',locator:'https://rss.arxiv.org/rss/cs.AI',topics:['ai','science'],language:'en',format:'RSS',items:887,needsAdapter:true,zh:'高频论文摘要，不是论文全文；大型订阅源需要有界增量适配。',en:'High-volume paper abstracts, not full papers. Large feeds need bounded incremental processing.'},
+ {id:'ifanr',name:'爱范儿',locator:'https://www.ifanr.com/feed',topics:['tools','ai'],language:'zh',format:'RSS',items:20,zh:'爱范儿综合科技资讯，不是 APPSO 专属订阅源。',en:'General technology coverage from iFanr, not an APPSO-only feed.'},
+ {id:'simon-willison',name:'Simon Willison',locator:'https://simonwillison.net/atom/everything/',topics:['ai','code','tools'],language:'en',format:'Atom',items:30,zh:'独立开发者对 AI、数据与编程的实践记录。',en:'Independent practical notes about AI, data, and programming.'},
+ {id:'julia-evans',name:'Julia Evans',locator:'https://jvns.ca/atom.xml',topics:['linux','network','code'],language:'en',format:'Atom',items:20,zh:'清晰易懂的计算机基础和调试文章；语言按样本判断。',en:'Approachable computer fundamentals and debugging notes; language inferred from samples.'},
+ {id:'raschka',name:'Sebastian Raschka',locator:'https://magazine.sebastianraschka.com/feed',topics:['ai','science'],language:'en',format:'RSS',items:20,needsAdapter:true,zh:'机器学习研究文章；本次响应超过当前采集大小限制，暂需适配。',en:'Machine-learning research articles. The verified response exceeds the current fetch limit and needs adapter work.'},
+ {id:'yourfeed-releases',name:'YourFeed Releases',locator:'https://github.com/alanxiaofeifei/yourfeed/releases.atom',topics:['code','tools'],language:'en',format:'Atom',items:6,zh:'本项目正式版本更新，不会自动升级你的实例。',en:'Project releases. Subscribing does not automatically upgrade your instance.'},
+ {id:'mit-tech-review',name:'MIT Technology Review',locator:'https://www.technologyreview.com/feed/',topics:['ai','science'],language:'en',format:'RSS',items:10,zh:'科技研究与社会影响；部分原文需要付费。',en:'Technology research and its social impact. Some original articles require a subscription.'},
+];
+/** Validation snapshots describe the feed response, never end-to-end app success. */
+export const sourceCatalog:SourceCatalogEntry[]=[
+ ...legacyCatalog.map(entry=>({...entry,starter:starters.has(entry.id),verification:{status:entry.id==='ruanyifeng'?'needs-adapter':checked[entry.id]?'verified':'unverified',...(checked[entry.id]?{checkedAt,...checked[entry.id]}:{}),coverage:'unknown',...(entry.id==='ruanyifeng'?{note:{zh:'Feed 有效，条目 HTTP 链接需要安全升级适配。',en:'The feed is valid, but HTTP entry links need a verified HTTPS upgrade.'}}:{})} as SourceCatalogEntry['verification']})),
+ ...additional.map(entry=>({id:entry.id,name:entry.name,platform:'rss' as const,locator:entry.locator,topics:entry.topics,language:entry.language,contentType:entry.id==='yourfeed-releases'?'news' as const:'article' as const,description:{zh:entry.zh,en:entry.en},starter:starters.has(entry.id),verification:{status:entry.needsAdapter?'needs-adapter' as const:'verified' as const,checkedAt,format:entry.format,items:entry.items,coverage:entry.coverage??'unknown'}})),
 ];

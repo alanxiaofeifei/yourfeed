@@ -1,0 +1,8 @@
+{
+  "instanceId": "yf-member-001",
+  "workerName": "yourfeed-member-001",
+  "origin": "https://yourfeed-member-001.example.workers.dev",
+  "databaseId": "00000000-0000-0000-0000-000000000000",
+  "databaseName": "yourfeed-member-001",
+  "controlWorker": "yourfeed-control"
+}

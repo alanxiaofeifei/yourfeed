@@ -2,7 +2,7 @@ import type { ContentItem, Feedback, Kind, Mode } from '../shared/types';
 import { initialize, listContent, upsertContent, listSources, updateSource, readFeedback, saveFeedback, publicConfig, saveConfig, getUsage, getState, type Env } from './db';
 import { checkWriteRequest, readJson, HttpError, cleanError, providerName } from './security';
 import { feedPage, rankFeed } from './ranking';
-import { groupNews } from './dedup';
+import { groupNews,deduplicateFeed } from './dedup';
 import { selectBriefing } from './briefing';
 import { sessionForRequest } from './session';
 import { handleAuth, requireUser, requireRecentAuth } from './auth';
@@ -14,13 +14,18 @@ import {readSourceImportBody,previewSourceImport,commitSourceImport,validateDisc
 import {sourceCatalog} from '../shared/source-catalog';
 import {cachedBatchContent,readFeedBatchRequest,rotatedFeedPage,validateFeedBatchInput} from './feed-rotation';
 import {localeFromTag} from '../shared/language';
+import {getContentById,queryLibrary,exportLibraryPage,rebuildSearchIndex} from './library';
+import {schemaHealth} from './health';
+import {retentionStatus,saveRetentionPolicy,cleanupRetention} from './retention';
+import {readLibraryArchiveBody,restoreLibrary} from './library-restore';
+import {reserveManualImport} from './hosted-limits';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
   try{
     const path=new URL(request.url).pathname;
     if(path.startsWith('/api/auth/'))return handleAuth(request,env);
-    if(path==='/api/health'){if(!env.DB)return response({ok:false,name:'YourFeed',storage:false,schemaReady:false},503);try{const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='content'").first<{count:number}>();const ready=(row?.count||0)>0;return response({ok:ready,name:'YourFeed',storage:true,schemaReady:ready},ready?200:503);}catch{return response({ok:false,name:'YourFeed',storage:true,schemaReady:false},503);}}
+    if(path==='/api/health'){if(!env.DB)return response({ok:false,name:'YourFeed',storage:false,schemaReady:false},503);try{const health=await schemaHealth(env);return response({...health,ok:health.schemaReady,name:'YourFeed',storage:true},health.schemaReady?200:503);}catch{return response({ok:false,name:'YourFeed',storage:true,schemaReady:false},503);}}
     if(path==='/api/session'&&request.method==='GET')return response(await sessionForRequest(request,env));
     const userId=(await requireUser(request,env)).id;
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
@@ -41,6 +46,17 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/deployment/check'&&request.method==='POST')return response(await checkDeployment(env,request));
     const url=new URL(request.url);
     const presentationProfile=async()=>{const profile=await getProfile(env);const locale=request.headers.get('accept-language');return locale?{...profile,language:localeFromTag(locale)}:profile;};
+    if(path==='/api/library'&&request.method==='GET')return response(await queryLibrary(env,{userId,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read',q:url.searchParams.get('q')||'',type:(url.searchParams.get('type')||'all') as Kind|'all',cursor:url.searchParams.get('cursor')||undefined,limit:20}));
+    if(path==='/api/content'&&request.method==='GET'){const item=await getContentById(env,url.searchParams.get('id')||'');if(!item)throw new HttpError(404,'内容不存在。');const feedback=await readFeedback(env,userId);return response({...item,...feedback[item.id]});}
+    if((path==='/api/archive'||path==='/api/export')&&request.method==='GET')return response(await exportLibraryPage(env,userId,{cursor:url.searchParams.get('cursor')||undefined,limit:50,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read'}));
+    if(path==='/api/archive/import/preview'&&request.method==='POST')return response(await restoreLibrary(env,userId,await readLibraryArchiveBody(request),false));
+    if(path==='/api/archive/import/commit'&&request.method==='POST'){await requireRecentAuth(request,env);return response(await restoreLibrary(env,userId,await readLibraryArchiveBody(request),true));}
+    if(path==='/api/storage'&&request.method==='GET')return response(await retentionStatus(env));
+    if(path==='/api/storage'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveRetentionPolicy(env,await readJson(request)));}
+    if(path==='/api/storage/cleanup'&&request.method==='POST'){await requireRecentAuth(request,env);return response(await cleanupRetention(env,{limit:50}));}
+    if(path==='/api/maintenance'&&request.method==='POST'){const index=await rebuildSearchIndex(env,5);return response({...await cleanupRetention(env,{limit:5}),index});}
+    if(path==='/api/background'&&request.method==='GET'){const {backgroundStatus}=await import('./background');return response(await backgroundStatus(env));}
+    if(path==='/api/background'&&request.method==='PUT'){await requireRecentAuth(request,env);const {saveBackgroundPolicy}=await import('./background');return response(await saveBackgroundPolicy(env,await readJson(request),userId));}
     if(path==='/api/briefing'&&request.method==='GET'){
       const [items,sources,feedback,lastUpdated]=await Promise.all([listContent(env),listSources(env),readFeedback(env,userId),getState(env,'last-sync')]);
       return response(selectBriefing(items,sources,feedback,new Date(),lastUpdated||undefined,await presentationProfile()));
@@ -48,9 +64,10 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/feed'&&request.method==='GET'){
       const mode:Mode=url.searchParams.get('mode')==='grow'?'grow':'rest';const type=url.searchParams.get('type')||'all';const filter=url.searchParams.get('filter')||'all';
       if(!kinds.has(type)||!['all','saved','liked','read'].includes(filter))throw new HttpError(400,'内容筛选条件无效。');
+      if(filter!=='all'||url.searchParams.get('q')){const page=await queryLibrary(env,{userId,filter:filter as 'all'|'liked'|'saved'|'read',q:url.searchParams.get('q')||'',type:type as Kind|'all',cursor:url.searchParams.get('cursor')==='0'?undefined:url.searchParams.get('cursor')||undefined,limit:20});return response({...page,sources:(await listSources(env)).filter(s=>s.enabled).length,lastUpdated:await getState(env,'last-sync'),mode});}
       const cursor=Math.min(1000,Math.max(0,parseInt(url.searchParams.get('cursor')||'0',10)||0));
       const [items,sources,feedback]=await Promise.all([listContent(env),listSources(env),readFeedback(env,userId)]);
-      const ranked=groupNews(rankFeed(items,sources,feedback,mode,type,filter,(url.searchParams.get('q')||'').slice(0,200),await presentationProfile()),items);
+      const ranked=deduplicateFeed(rankFeed(items,sources,feedback,mode,type,filter,(url.searchParams.get('q')||'').slice(0,200),await presentationProfile()),items);
       const page=feedPage(ranked,cursor);
       return response({...page,total:ranked.length,sources:sources.filter(s=>s.enabled).length,lastUpdated:await getState(env,'last-sync'),mode});
     }
@@ -86,6 +103,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     }
     if(path==='/api/import'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.url!=='string')throw new HttpError(400,'请填写文章、帖子或视频链接。');
+      await reserveManualImport(env);
       const {importUrl}=await import('./ingest');let item:ContentItem;try{item=await importUrl(body.url,env);}catch(error){const message=error instanceof Error?error.message:'';if(/^(请输入|请提供|仅支持|不支持|暂不支持|此链接|YouTube 视频|来源暂时|来源返回|来源内容|来源跳转)/.test(message))throw new HttpError(400,message);throw new HttpError(502,'暂时无法读取这个来源，请稍后重试。');}await upsertContent(env,[item]);return response({ok:true,item});
     }
     if(path==='/api/test-provider'&&request.method==='POST'){
@@ -95,7 +113,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/analyze'&&request.method==='POST'){
       const body=await readJson(request);const {analyzeItem,analyzePending}=await import('./ai');
       if(typeof body.id==='string'){
-        const item=(await listContent(env)).find(x=>x.id===body.id);if(!item)throw new HttpError(404,'内容不存在。');
+        const item=await getContentById(env,body.id);if(!item)throw new HttpError(404,'内容不存在。');
         return response(await analyzeItem(env,item));
       }
       return response(await analyzePending(env,Math.min(3,Math.max(1,Number(body.limit)||1)),userId));

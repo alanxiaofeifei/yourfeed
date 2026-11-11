@@ -92,3 +92,14 @@ describe('owner-controlled bulk source imports',()=>{
   expect(()=>validateDiscoveryMessages([{role:'user',content:'my key is sk-private-test-123456789'}])).toThrow('不要在对话粘贴凭据');
  });
 });
+
+describe('bounded explicit feed checks',()=>{
+ it('checks entries for at most five feeds and marks the remainder pending',async()=>{
+  const fetchMock=vi.fn(async()=>new Response('<rss><channel><item><title>Science</title><link>https://publisher.reader.net/post</link></item></channel></rss>'));vi.stubGlobal('fetch',fetchMock);
+  const result=await previewSourceImport(env,{text:JSON.stringify(Array.from({length:7},(_,index)=>({platform:'rss',locator:`https://feed${index}.reader.net/feed.xml`}))),verifyFeeds:true},dns);
+  expect(fetchMock).toHaveBeenCalledTimes(5);expect(result.candidates.filter(item=>item.verification?.status==='valid')).toHaveLength(5);expect(result.candidates.filter(item=>item.verification?.status==='unverified')).toHaveLength(2);expect(memory.sources).toHaveLength(0);
+ });
+ it('does not treat a 200 HTML response as an RSS subscription in explicit verification',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('<html><body>Subscribe here</body></html>')));const result=await previewSourceImport(env,{text:'https://publisher.reader.net/feed.xml',verifyFeeds:true},dns);expect(result.candidates[0].error).toBeTruthy();expect(result.errors).toHaveLength(1);
+ });
+});

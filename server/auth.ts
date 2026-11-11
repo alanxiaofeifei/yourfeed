@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import type { Env } from './db';
 import { HttpError } from './security';
+import { hostedEnvironment, activateHostedIdentity, isHosted } from './hosted';
 
 const authUser=sqliteTable('auth_user',{id:text('id').primaryKey(),name:text('name').notNull(),email:text('email').notNull().unique(),emailVerified:integer('email_verified',{mode:'boolean'}).notNull().default(false),image:text('image'),createdAt:integer('created_at',{mode:'timestamp_ms'}).notNull(),updatedAt:integer('updated_at',{mode:'timestamp_ms'}).notNull()});
 const authSession=sqliteTable('auth_session',{id:text('id').primaryKey(),expiresAt:integer('expires_at',{mode:'timestamp_ms'}).notNull(),token:text('token').notNull().unique(),createdAt:integer('created_at',{mode:'timestamp_ms'}).notNull(),updatedAt:integer('updated_at',{mode:'timestamp_ms'}).notNull(),ipAddress:text('ip_address'),userAgent:text('user_agent'),userId:text('user_id').notNull().references(()=>authUser.id,{onDelete:'cascade'})});
@@ -99,7 +100,7 @@ export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>vo
    const linked=await env.DB.prepare('SELECT id FROM auth_account WHERE provider_id=? AND account_id=? AND user_id=?').bind('facebook',subject,user.id).first();
    return linked?undefined:denied;
   }},
-  databaseHooks:{user:{create:{before:async user=>{if(!ownerIdentityAllowed(env,user))return false;return {data:user};}}},session:{create:{before:async session=>{const user=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(session.userId).first<{email:string;email_verified:number}>();return user&&ownerIdentityAllowed(env,{email:user.email,emailVerified:!!user.email_verified})?{data:session}:false;}}}},
+  databaseHooks:{user:{create:{before:async user=>{if(!ownerIdentityAllowed(env,user))return false;return {data:user};}}},session:{create:{before:async session=>{const user=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(session.userId).first<{email:string;email_verified:number}>();if(!user||!ownerIdentityAllowed(env,{email:user.email,emailVerified:!!user.email_verified}))return false;await activateHostedIdentity(env,user.email);return {data:session};}}}},
   verification:{storeInDatabase:true,storeIdentifier:{hash:identifier=>authHmac(env,'verification:'+identifier)}},
   plugins:[emailOTP({otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||normalizeOwnerEmail(email)!==config.owner)throw new HttpError(403,'此登录方式不可用。');try{await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}catch(error){const failure=error instanceof MailFailure?error:new MailFailure('sending_unavailable','验证码发送暂时不可用，请稍后重试。');onMailFailure?.(failure);/* Better Auth deliberately swallows send-hook errors. Remove only this unsent code and propagate through the request-scoped observer. */await env.DB.prepare('DELETE FROM auth_verification WHERE identifier=? AND value=?').bind(await authHmac(env,'verification:sign-in-otp-'+normalizeOwnerEmail(email)),(await authHmac(env,'otp:'+otp))+':0').run();throw failure;}}})],
  });
@@ -114,9 +115,9 @@ function sitesSession(request:Request,env:Env):AuthSession|null {
  return {user:{id,...(email?{email}:{}),...(name?{name:name.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,160)}:{})},session:{id:'sites-managed',createdAt:new Date(0),expiresAt:new Date(8640000000000000)}};
 }
 export async function resolveSession(request:Request,env:Env):Promise<AuthSession|null>{
- if(authMode(env)==='sites')return sitesSession(request,env);
+ if(authMode(env)==='sites')return isHosted(env)?null:sitesSession(request,env);
  if(!request.headers.get('cookie'))return null;
- try{const auth=createOwnerAuth(env);const result=await auth.api.getSession({headers:request.headers});if(!result||!ownerIdentityAllowed(env,result.user))return null;
+ try{env=await hostedEnvironment(env);const auth=createOwnerAuth(env);const result=await auth.api.getSession({headers:request.headers});if(!result||!ownerIdentityAllowed(env,result.user))return null;
   const createdAt=new Date(result.session.createdAt),expiresAt=new Date(result.session.expiresAt),now=Date.now();
   if(!Number.isFinite(createdAt.getTime())||!Number.isFinite(expiresAt.getTime())||createdAt.getTime()>now||expiresAt.getTime()<=now||createdAt.getTime()+WEEK<=now)return null;
   return {user:{id:result.user.id,email:result.user.email,name:result.user.name},session:{id:result.session.id,createdAt,expiresAt}};
@@ -142,9 +143,10 @@ export function authCapabilities(env:Env){
 }
 export async function handleAuth(request:Request,env:Env):Promise<Response>{
  const path=new URL(request.url).pathname;
- if(path==='/api/auth/config'&&request.method==='GET')return json(authCapabilities(env));
+ if(path==='/api/auth/config'&&request.method==='GET'){try{return json(authCapabilities(await hostedEnvironment(env)));}catch{return json({...authCapabilities({...env,OWNER_EMAIL:undefined}),configured:false,emailOtp:false,google:false,github:false,facebook:false,hostingUnavailable:true});}}
  if(authMode(env)==='sites')return json({error:'Sites 模式请使用 ChatGPT 登录入口。'},400);
  try{
+  env=await hostedEnvironment(env);
   const config=settings(env),origin=new URL(request.url).origin;
   if(origin!==config.origin)throw new HttpError(403,'登录请求来源不匹配。');
   const relative=path.slice('/api/auth'.length);const callback=/^\/callback\/(google|github|facebook)$/.test(relative);

@@ -125,7 +125,7 @@ describe('AI access, provider isolation and accounting',()=>{
   });
   it('uses the selected OpenAI model with low reasoning, structured output and no storage/tools',async()=>{
     const result=await analyzeItem(env,item);const [url,request]=fetchMock.mock.calls[0] as unknown as [string,RequestInit];const payload=JSON.parse(String(request.body));
-    expect(url).toBe('https://api.openai.com/v1/responses');expect(payload.model).toBe('gpt-6.1-sol');expect(payload.reasoning).toEqual({effort:'low'});expect(payload.store).toBe(false);expect(payload.tools).toBeUndefined();expect(payload.text.format.strict).toBe(true);expect(result.analysis?.coverage).toBe('full_text');
+    expect(url).toBe('https://api.openai.com/v1/responses');expect(payload.model).toBe('gpt-6.1-sol');expect(payload.reasoning).toEqual({effort:'low'});expect(payload.store).toBe(false);expect(payload.tools).toBeUndefined();expect(payload.text.format.strict).toBe(true);expect(result.analysis?.coverage).toBe('excerpt');
     expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({inputTokens:1000,outputTokens:150,success:true,cost:0.0035}));
   });
   it.each([['deepseek','deepseek-flash','https://api.deepseek.com/chat/completions'],['glm','glm-5.3','https://open.bigmodel.cn/api/paas/v4/chat/completions']])('only calls the selected %s official endpoint',async(provider,model,endpoint)=>{
@@ -179,7 +179,7 @@ describe('AI access, provider isolation and accounting',()=>{
 
 describe('Evidence, coverage and cache invalidation',()=>{
   it('never represents video descriptions, project metadata or aggregator stories as original full-text evidence',()=>{
-    expect(sourceCoverage({...item,kind:'video'})).toBe('metadata');expect(sourceCoverage({...item,kind:'project'})).toBe('metadata');expect(sourceCoverage({...item,kind:'news',parentId:'issue'})).toBe('excerpt');expect(sourceCoverage({...item,body:'x'.repeat(20000)})).toBe('excerpt');
+    expect(sourceCoverage({...item,contentCoverage:'unknown'})).toBe('excerpt');expect(sourceCoverage({...item,contentCoverage:'full'})).toBe('full_text');expect(sourceCoverage({...item,contentCoverage:'full',truncated:true})).toBe('excerpt');expect(sourceCoverage({...item,kind:'video'})).toBe('metadata');expect(sourceCoverage({...item,kind:'project'})).toBe('metadata');expect(sourceCoverage({...item,kind:'news',parentId:'issue'})).toBe('excerpt');expect(sourceCoverage({...item,body:'x'.repeat(20000)})).toBe('excerpt');
   });
   it('rejects hallucinated source links and ignores claimed coverage',()=>{
     expect(()=>validateAnalysis({...valid,references:['https://invented.example/fake']},item,'gpt-6.1-sol')).toThrow('不存在');

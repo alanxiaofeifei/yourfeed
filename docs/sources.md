@@ -25,3 +25,12 @@ Open **Sources → Add sources**:
 Preview up to 100 candidates and confirm up to 50 per action; the UI sends sequential groups of 10 and displays progress. Candidates are editable and only selected entries are added. Duplicates are skipped without changing existing block, pause or reading controls. Partial failures remain available for correction and retry.
 
 Adding sources does not enable AI reading or switch models. Refresh the home feed to fetch content. Enter API keys only in their dedicated settings, never in an import or chat. Do not paste passwords, unsubscribe links or token-bearing private URLs.
+
+
+## Bounded incremental updates / 有界增量更新
+
+RSS updates advance five entries per source page, not only the newest ten articles forever. The current UI runs at most 35 refresh batches per interaction; a durable checkpoint retains unfinished work for a later refresh. Feed size, entry count, resource limits and publisher history remain bounded. A valid feed cannot restore articles the publisher has already removed.
+
+Hosted instances enforce 30 enabled sources, 250 new collected items/day and 20 manual content imports/day. Reaching a limit preserves the backlog/cache and explains the pause; it does not silently use another user's API key or buy more resources. Source errors, skipped unsafe links, next retry and remaining entries should be read as partial update status, not complete-history claims.
+
+中文：每源 RSS 每页 5 条，前端每次最多推进 35 个批次，剩余工作保留检查点。托管每日最多采集 250 条新内容、手动导入 20 次、启用 30 个来源。到达限制后保留缓存和待处理状态，不代表所有历史均已抓完；作者已从 feed 删除的旧文章无法保证补回。
