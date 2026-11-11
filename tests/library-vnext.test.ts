@@ -75,10 +75,10 @@ describe('opt-in or hosted-only retention of ordinary cached bodies',()=>{
 describe('secret-free archive restore with explicit preview and opt-ins',()=>{
  it('round trips content and owner feedback, skips existing IDs and never imports server credentials',async()=>{
   const first=fixture();await upsertContent(first.env,[article('portable',{url:'https://publisher.reader.net/portable'})]);await saveFeedback(first.env,'old-owner','portable',{liked:true,read:true});const archive=await exportLibraryPage(first.env,'old-owner');
-  const second=fixture(),input={archive:{...archive,settings:{'key:openai':'must-not-import'},auth_user:[{id:'attacker'}]}};
+  const second=fixture(),input={archive:{...archive,settings:{'key:openai':'must-not-import'},auth_user:[{id:'attacker'}]}};const existingSettings=second.db.prepare('SELECT id,json FROM settings ORDER BY id').all();
   expect(await restoreLibrary(second.env,'new-owner',input)).toMatchObject({newItems:1,existingItems:0,imported:0});expect(second.db.prepare('SELECT COUNT(*) n FROM content').get()?.n).toBe(0);
   expect(await restoreLibrary(second.env,'new-owner',{...input,confirmed:true},true)).toMatchObject({imported:1});expect((await queryLibrary(second.env,{userId:'new-owner',filter:'liked'})).items[0]).toMatchObject({id:'portable',read:true});
-  expect(second.db.prepare('SELECT COUNT(*) n FROM settings').get()?.n).toBe(0);expect(second.db.prepare('SELECT COUNT(*) n FROM auth_user').get()?.n).toBe(0);
+  expect(second.db.prepare('SELECT id,json FROM settings ORDER BY id').all()).toEqual(existingSettings);expect(second.db.prepare('SELECT COUNT(*) n FROM auth_user').get()?.n).toBe(0);
   await restoreLibrary(second.env,'new-owner',{archive:{...archive,items:[article('portable',{title:'Never overwrite existing',url:'https://publisher.reader.net/portable'})]},confirmed:true},true);expect((await getContentById(second.env,'portable'))?.title).not.toBe('Never overwrite existing');
  });
  it('requires explicit confirmation and separate source/profile permission, rejects private URLs and oversized batches',async()=>{
