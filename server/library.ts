@@ -2,6 +2,7 @@ import type {ContentItem,Feedback,Kind} from '../shared/types';
 import {type Env,getContentById,listSources} from './db';
 import {getProfile} from './profile';
 import {HttpError} from './security';
+import {honestContent} from '../shared/content-coverage';
 
 export {getContentById};
 type Filter='all'|'liked'|'saved'|'read';
@@ -41,7 +42,7 @@ export async function queryLibrary(env:Env,options:LibraryOptions) {
   if(cursor){pageClauses.push('(c.updated_at<? OR (c.updated_at=? AND c.id<?))');pageValues.push(cursor.time,cursor.time,cursor.id);}
   const result=await env.DB.prepare('SELECT c.id,c.json,c.updated_at,f.json feedback'+join+' WHERE '+pageClauses.join(' AND ')+' ORDER BY c.updated_at DESC,c.id DESC LIMIT ?').bind(options.userId,...pageValues,limit+1).all<{id:string;json:string;updated_at:string;feedback:string|null}>();
   const hasMore=result.results.length>limit,rows=result.results.slice(0,limit);
-  const items=rows.map(row=>({...JSON.parse(row.json),...(row.feedback?JSON.parse(row.feedback):{})}) as ContentItem);
+  const items=rows.map(row=>honestContent({...JSON.parse(row.json),...(row.feedback?JSON.parse(row.feedback):{})}) as ContentItem);
   if(items.length){
     const provenance=await env.DB.prepare('SELECT content_id,name,url FROM content_sources WHERE content_id IN ('+items.map(()=>'?').join(',')+') ORDER BY first_seen_at,source_id').bind(...items.map(item=>item.id)).all<{content_id:string;name:string;url:string}>();
     for(const item of items){const found=provenance.results.filter(row=>row.content_id===item.id);item.relatedSources=[...new Map([...(item.relatedSources||[]),...found.map(({name,url})=>({name,url}))].map(value=>[value.name+'\n'+value.url,value])).values()];}

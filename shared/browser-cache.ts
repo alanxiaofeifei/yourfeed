@@ -1,4 +1,5 @@
 import type {ContentItem,Topic} from './types';
+import {honestContent} from './content-coverage';
 import {shareableSourceUrl} from './content-export';
 import {isLanguage} from './language';
 
@@ -13,6 +14,7 @@ const list=(value:unknown)=>Array.isArray(value)?value.filter((v):v is Topic=>to
 
 /** An explicit allowlist prevents session/config fields from entering device storage. */
 export function readingSnapshot(input:ContentItem):ContentItem {
+ input=honestContent(input);
  const item:ContentItem={id:text(input.id,240),kind:['video','article','news','post','project'].includes(input.kind)?input.kind:'article',platform:text(input.platform,80),sourceId:text(input.sourceId,240),sourceName:text(input.sourceName,240),title:text(input.title,1000),url:shareableSourceUrl(input.url)||'',summary:text(input.summary,12000),publishedAt:text(input.publishedAt,80),topics:list(input.topics)};
  if(input.body)item.body=text(input.body,100000);
  if(input.analysis){item.analysis={bullets:(input.analysis.bullets||[]).slice(0,12).map(v=>text(v,2000)),relevance:text(input.analysis.relevance,4000),topics:list(input.analysis.topics),coverage:['full_text','excerpt','metadata'].includes(input.analysis.coverage)?input.analysis.coverage:'metadata',references:(input.analysis.references||[]).slice(0,20).map(v=>shareableSourceUrl(v)).filter((v):v is string=>!!v),model:text(input.analysis.model,200)};

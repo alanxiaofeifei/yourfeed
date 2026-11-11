@@ -1,4 +1,5 @@
 import type { ContentItem } from './types';
+import {honestContent} from './content-coverage';
 
 export type MarkdownVariant = 'original' | 'ai-summary';
 export type ExportTranslate = (chinese: string, english?: string) => string;
@@ -40,12 +41,13 @@ export function markdownFilename(title: string, variant: MarkdownVariant): strin
 }
 
 export function buildContentMarkdown(item: ContentItem, variant: MarkdownVariant, t: ExportTranslate, privateOrigin?: string): { filename: string; markdown: string } {
+  item=honestContent(item);
   if (variant === 'ai-summary' && !item.analysis) throw new Error('AI_SUMMARY_UNAVAILABLE');
   const source = shareableSourceUrl(item.url, privateOrigin);
   const lines = [`# ${paragraph(item.title)}`, '', `${t('来源', 'Source')}: ${paragraph(item.sourceName)} · ${paragraph(item.platform)}`];
   if (source) lines.push(`${t('原始链接', 'Original URL')}: <${source.replace(/</g, '%3C').replace(/>/g, '%3E')}>`);
   else lines.push(t('原始链接不可安全导出，请在原平台确认。', 'The original URL could not be exported safely. Check it on the source platform.'));
-  if (item.publishedAt && Number.isFinite(Date.parse(item.publishedAt))) lines.push(`${t('发布时间', 'Published')}: ${new Date(item.publishedAt).toISOString()}`);
+  if (item.dateSource!=='missing' && item.publishedAt!=='1970-01-01T00:00:00.000Z' && item.publishedAt && Number.isFinite(Date.parse(item.publishedAt))) lines.push(`${t('发布时间', 'Published')}: ${new Date(item.publishedAt).toISOString()}`);
   if (variant === 'original') {
     lines.push('', `## ${t('来源内容（本站可读取部分）', 'Available source text')}`, '', t('此文件导出本站缓存的来源文字，可能只是摘要或描述，并不保证是完整原文。请以原始链接为准。', 'This file exports source text cached by this instance. It may contain only an excerpt or description, not the complete original. Refer to the original URL.'));
     if (item.kind === 'video') lines.push('', t('视频内容仅导出可取得的标题与描述，不包含视频、音频或完整字幕。', 'For videos, this export includes the available title and description, not video, audio, or a full transcript.'));

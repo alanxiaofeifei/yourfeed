@@ -5,6 +5,7 @@ import { validateProviderBaseUrl } from './provider-endpoint';
 import { getProfile } from './profile';
 import { profileDate } from '../shared/profile';
 import {isHosted} from './hosted';
+import {honestContent} from '../shared/content-coverage';
 export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
 export const DEFAULT_MODELS: Record<Provider,string> = {openai:'gpt-6.1-sol',deepseek:'deepseek-flash',glm:'glm-5.3',custom:''};
 export const defaultConfig: ProviderConfig = {provider:'openai',model:DEFAULT_MODELS.openai,protocol:'responses',responseFormat:'json_schema',reasoningEffort:'low',maxOutputTokens:2048,timeoutSeconds:25,enabled:false,monthlyBudget:20,dailyLimit:20};
@@ -20,11 +21,11 @@ export async function initialize(env:Env):Promise<void> {
   await setState(env,'seeded-v1',new Date().toISOString());
 }
 /** Recommendation candidates only. Library/history use keyset SQL in library.ts. */
-export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC,id DESC LIMIT 1000').all<{json:string}>();return r.results.map(r=>JSON.parse(r.json)); }
+export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC,id DESC LIMIT 1000').all<{json:string}>();return r.results.map(r=>honestContent(JSON.parse(r.json))); }
 export async function getContentById(env:Env,id:string):Promise<ContentItem|null> {
   if(!id||id.length>200)return null;
   const row=await env.DB.prepare('SELECT json FROM content WHERE id=? OR id=(SELECT content_id FROM content_aliases WHERE alias=?) ORDER BY (id=?) DESC LIMIT 1').bind(id,id,id).first<{json:string}>();
-  return row?JSON.parse(row.json):null;
+  return row?honestContent(JSON.parse(row.json)):null;
 }
 export async function databaseStorage(env:Env) {
   // D1 disallows page_count/page_size PRAGMAs. Its documented result metadata

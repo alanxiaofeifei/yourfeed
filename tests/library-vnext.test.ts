@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
-import {type Env,upsertContent,getContentById,getSecret,saveFeedback} from '../server/db';
+import {type Env,upsertContent,getContentById,getSecret,saveFeedback,listContent} from '../server/db';
 import {queryLibrary,exportLibraryPage,rebuildSearchIndex} from '../server/library';
 import {cleanupRetention,retentionStatus,saveRetentionPolicy} from '../server/retention';
 import {schemaHealth} from '../server/health';
@@ -18,6 +18,12 @@ function fixture(){
 const article=(id:string,patch:Partial<ContentItem>={}):ContentItem=>({id,kind:'article',platform:'RSS',sourceId:'first',sourceName:'First publisher',title:'An article '+id,url:'https://publisher.example/story/'+id,summary:'Publisher excerpt',body:'Available text',publishedAt:'2026-01-01T00:00:00Z',topics:['science'],...patch});
 
 describe('preserving the complete library with bounded SQL pages',()=>{
+ it('corrects cached legacy analysis coverage on reads and exports without rewriting notes or charging AI',async()=>{
+  const {env,db}=fixture(),analysis={bullets:['Existing AI notes'],relevance:'Existing relevance',topics:['science' as const],coverage:'full_text' as const,references:[],model:'previous-model'};
+  await upsertContent(env,[article('legacy-coverage',{analysis})]);const stored=String(db.prepare('SELECT json FROM content WHERE id=?').get('legacy-coverage')?.json);
+  expect((await listContent(env))[0].analysis?.coverage).toBe('excerpt');expect((await getContentById(env,'legacy-coverage'))?.analysis?.coverage).toBe('excerpt');expect((await queryLibrary(env,{userId:'owner'})).items[0].analysis).toMatchObject({coverage:'excerpt',bullets:['Existing AI notes'],model:'previous-model'});expect((await exportLibraryPage(env,'owner')).items[0].analysis?.coverage).toBe('excerpt');
+  expect(db.prepare('SELECT json FROM content WHERE id=?').get('legacy-coverage')?.json).toBe(stored);expect(db.prepare('SELECT COUNT(*) n FROM reservations').get()?.n).toBe(0);
+ });
  it('finds an old saved item beyond 5,000 newer rows, searches body/AI, and reads by stable aliases',async()=>{
   const {db,env}=fixture(),insert=db.prepare('INSERT INTO content(id,source_id,kind,url,json,updated_at) VALUES (?,?,?,?,?,?)');
   db.exec('BEGIN');for(let i=0;i<5005;i++){const item=article('item-'+i,{body:i===0?'唯一的天文线索':'Other text',analysis:i===0?{bullets:['A unique inference'],relevance:'Older research',topics:['science'],coverage:'excerpt',references:[],model:'fixture'}:undefined});insert.run(item.id,item.sourceId,item.kind,item.url,JSON.stringify(item),new Date(Date.UTC(2026,0,1,0,i)).toISOString());}db.exec('COMMIT');

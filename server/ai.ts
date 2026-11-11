@@ -1,4 +1,5 @@
 import {languageName} from '../shared/language';
+import {honestContent} from '../shared/content-coverage';
 import { z } from 'zod';
 import type { Analysis, ContentItem, Provider, ProviderConfig, Topic } from '../shared/types';
 import { getConfig, getProviderKey, getAnalysisCache, saveAnalysisCache, listContent, listSources, readFeedback, upsertContent, reserveUsage, settleUsage, usagePeriod, type Env } from './db';
@@ -357,7 +358,7 @@ export async function analyzeItem(env: Env, item: ContentItem): Promise<ContentI
   if (!key) throw new HttpError(400, '请先在私有设置页保存所选服务商的 API 密钥。');
   const profile=await getProfile(env);const fingerprint = await analysisFingerprint(item,config,profile);
   const cached = await getAnalysisCache(env,item.id,fingerprint,config.provider,config.model);
-  if (cached) { const updated={...item,analysis:cached};await upsertContent(env,[updated]);return updated; }
+  if (cached) { const updated=honestContent({...item,analysis:cached});await upsertContent(env,[updated]);return updated; }
   const prompt = promptFor(item,profile);const {reservationId} = await reserve(env,config,item.id,prompt,false,profile);
   let result: ModelResult;
   try { result = await callModel(config,key,prompt,false,profile); }

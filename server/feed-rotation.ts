@@ -4,6 +4,7 @@ import type {Env} from './db';
 import {groupNews} from './dedup';
 import {feedPage,rankFeed} from './ranking';
 import {HttpError} from './security';
+import {honestContent} from '../shared/content-coverage';
 
 export interface FeedBatchOptions {mode:Mode;type:Kind|'all';filter:'all';q:string;cursor:number;excludeIds:string[];seed:string;asOf:string;}
 const TYPES=new Set(['all','video','article','news','post','project']);
@@ -33,7 +34,7 @@ export function validateFeedBatchInput(body:Record<string,unknown>,now=Date.now(
 /** The cutoff keeps a batch from admitting newly synced/backfilled content mid-page. */
 export async function cachedBatchContent(env:Env,asOf:string):Promise<ContentItem[]> {
   const rows=await env.DB.prepare('SELECT json FROM content WHERE updated_at<=? ORDER BY updated_at DESC,id DESC LIMIT 1000').bind(asOf).all<{json:string}>();
-  return rows.results.map(row=>JSON.parse(row.json) as ContentItem);
+  return rows.results.map(row=>honestContent(JSON.parse(row.json) as ContentItem));
 }
 
 function randomFor(seed:string,id:string):number {
