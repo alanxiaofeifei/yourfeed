@@ -24,6 +24,8 @@ const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
   try{
     const path=new URL(request.url).pathname;
+    if(path.startsWith('/api/maintenance-backup')){const {handleMaintenanceBackup}=await import('./maintenance-backup');return await handleMaintenanceBackup(request,env);}
+    {const {backupWriteLocked}=await import('./maintenance-backup');if(backupWriteLocked(env)&&(!['GET','HEAD'].includes(request.method)||path==='/api/notebook/callback'))return response({error:'正在保存一致性备份，内容更新暂时暂停；阅读仍可使用。'},503);}
     if(path.startsWith('/api/auth/'))return handleAuth(request,env);
     if(path==='/api/health'){if(!env.DB)return response({ok:false,name:'YourFeed',storage:false,schemaReady:false},503);try{const health=await schemaHealth(env);return response({...health,ok:health.schemaReady,name:'YourFeed',storage:true},health.schemaReady?200:503);}catch{return response({ok:false,name:'YourFeed',storage:true,schemaReady:false},503);}}
     if(path==='/api/session'&&request.method==='GET')return response(await sessionForRequest(request,env));
