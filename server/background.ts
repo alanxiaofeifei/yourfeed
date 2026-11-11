@@ -17,6 +17,7 @@ export async function saveBackgroundPolicy(env:Env,input:Record<string,unknown>,
 }
 /** Invoked only by a platform schedule, never an unauthenticated HTTP endpoint. */
 export async function runBackground(env:Env,now=Date.now()){
+ const {backupWriteLocked}=await import('./maintenance-backup');if(backupWriteLocked(env))return {ran:false,reason:'backup-maintenance'};
  const policy=await backgroundStatus(env);
  if(env.HOSTING_MODE==='hosted'){const {assertHostedAdmission}=await import('./hosted');await assertHostedAdmission(env);}
  // Cache housekeeping is separate from opt-in network fetching and paid AI.
