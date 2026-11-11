@@ -2,11 +2,11 @@
 
 [中文说明](README.zh-CN.md)
 
-A private home for videos, articles, news, saved posts and open-source projects. Choose a relaxed feed for a break or a focused feed for your next step. Your sources and feedback shape the ranking; updates happen when you open the site or request them.
+A private home for videos, articles, news, saved posts and open-source projects. Choose a relaxed feed for a break or a focused feed for your next step. Your sources and feedback shape the ranking; updates happen when you open the site or request them, with separately configured opt-in background updates.
 
-**Hosted owner instance:** [yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+**Project / hosted entry:** [yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
 
-**How to sign in:** this address is a private owner instance, not a public demo. Only its configured owner can sign in using the enabled email or OAuth methods; visitors cannot register or sign in with their own email. To explore the product, see the [screenshots](#interface-preview), or deploy your own instance below and sign in with the `OWNER_EMAIL` you configure there.
+**How to sign in:** this address is not public registration or a shared demo account. The operator must provision and assign independent instances before invited users can sign in. Visitors without an invitation can see the [screenshots](#interface-preview) or deploy their own instance below. A self-hosted instance uses the `OWNER_EMAIL` configured by its owner. Existing deployed behavior is not evidence that the new hosted setup has passed production acceptance.
 
 If a sign-in code is missing, check **Spam/Junk**. When you find the message, mark it **Not spam** so future codes are easier to find.
 
@@ -36,6 +36,16 @@ Save content to your knowledge base with per-item Markdown exports (available so
 Need another interface language? Ask your AI to add a translation and send a pull request. 🐕 (Doge) The locale dictionaries live in `shared/locales/`; include the language selector, profile validation, AI output prompts and tests.
 
 Source setup now includes a free curated catalog, AI interest conversations, and editable bulk imports (links, OPML, YouTube CSV and JSON). See the [source guide](docs/sources.md), [OAuth setup guide](docs/authentication.md), and [settings navigation preview](docs/screenshots/settings-sections.png).
+
+## Independent self-hosting and invited hosting
+
+**Candidate implementation status:** the next-stage changes are implemented in this source tree and covered by automated checks; they are not a claim that the public URL or AlanFeed is running this candidate. Five invited production instances, a verified sending domain and free-plan acceptance still require operator setup. AlanFeed schema publication is blocked until its supported database backup/recovery path is established.
+
+Use one private instance for yourself, or operate isolated instances for invited users: **one Worker + one D1 + independent keys/sessions per person**, with a separate invitation control plane. The default managed capacity is five reserved/active members; other MIT operators can configure their own capacity, including commercial hosting. There is no payment system or free-capacity guarantee. Hosted users supply their own AI/YouTube API keys; missing credentials never fall back to the operator's keys. See the [hosting guide](docs/hosting.md) and [operations/capacity checklist](docs/next-stage-operations.md).
+
+Reliable reading work adds explicit content coverage/retrieval/truncation metadata, database-backed history/search, incremental source updates, multiple source provenance, subscription export and optional local reading storage. Browser caching is opt-in on a personal device, not a backup; ordinary hosted body-cache retention is 90 days with reminders and export. Existing private Sites data is not automatically cleaned. See the [source evidence and upstream review](docs/source-research.md).
+
+**Deployment status:** Cloudflare is the native target and the button is official, but it still requires account/origin, login, database and secret configuration. New deployment uses an empty-DB guard; existing releases require a private backup/target manifest. Other platforms are listed as adapters or unverified ports in the [deployment matrix](docs/deployment.md#deployment-destinations-and-honest-buttons), not advertised with invented one-click buttons. Source tests do not prove live invited deployment, email delivery, OAuth consent or free-plan capacity.
 
 ## Interface preview
 

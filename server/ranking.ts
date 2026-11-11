@@ -27,7 +27,7 @@ export function rankFeed(items:ContentItem[],sources:Source[],feedback:Record<st
   const affinity:Partial<Record<Topic,number>>={};
   for(const item of items){const f=feedback[item.id];if(!f)continue;const delta=(f.liked?1:0)+(f.saved?.4:0)-(f.dismissed?1.3:0);for(const topic of item.topics)affinity[topic]=(affinity[topic]||0)+delta/Math.max(1,item.topics.length);}
   const q=query.trim().toLocaleLowerCase();
-  const enriched=items.map(item=>({...item,...feedback[item.id]})).filter(item=>!disabled.has(item.sourceId)&&!(githubDisabled&&item.platform.toLowerCase()==='github')&&!item.dismissed&&(kind==='all'||item.kind===kind)&&(filter==='saved'?item.saved:filter==='liked'?item.liked:filter==='read'?item.read:!item.read)&&(!q||[item.title,item.summary,item.sourceName,...item.topics,...item.topics.map(t=>topicAliases[t]),...item.topics.flatMap(t=>Object.values(TOPIC_LABELS[t]))].join(' ').toLocaleLowerCase().includes(q)));
+  const enriched=items.map(item=>({...item,...feedback[item.id]})).filter(item=>!disabled.has(item.sourceId)&&!(githubDisabled&&item.platform.toLowerCase()==='github')&&!item.dismissed&&(kind==='all'||item.kind===kind)&&(filter==='saved'?item.saved:filter==='liked'?item.liked:filter==='read'?item.read:!item.read)&&(!q||[item.title,item.summary,item.body||'',...(item.analysis?.bullets||[]),item.analysis?.relevance||'',item.sourceName,...item.topics,...item.topics.map(t=>topicAliases[t]),...item.topics.flatMap(t=>Object.values(TOPIC_LABELS[t]))].join(' ').toLocaleLowerCase().includes(q)));
   const now=asOf;
   return enriched.map(item=>{
     const weight=(topic:Topic)=>profile?(profile.topicWeights[topic]||0)*(mode==='rest'?(['making','cooking','science','humanities'].includes(topic)?1:.8):1):(topics[mode][topic]||0);

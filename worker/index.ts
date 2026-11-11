@@ -5,6 +5,10 @@ import { resolveSession } from '../server/auth';
 import { verifyDeploymentChallenge } from '../server/deployment';
 
 export default {
+  async scheduled(_event:ScheduledEvent,env:Env,ctx:ExecutionContext):Promise<void>{
+    const {runBackground}=await import('../server/background');
+    ctx.waitUntil(runBackground(env).then(()=>undefined).catch(()=>{console.warn(JSON.stringify({event:'background_failed'}));}));
+  },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, ctx);

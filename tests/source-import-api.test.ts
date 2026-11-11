@@ -4,7 +4,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {handleApi} from '../server/api';
 import {listSources,updateSource,type Env} from '../server/db';
 import {sourceCatalog} from '../shared/source-catalog';
-import {createSource,updateSourceInput,sourceComparisonKey} from '../server/sources';
+import {createSource,updateSourceInput,deleteSource,sourceComparisonKey} from '../server/sources';
 let mf:Miniflare,env:Env;
 function request(path:string,body:unknown,user=true,origin='https://yourfeed.reader.net'){
  return new Request('https://yourfeed.reader.net/api/sources/import/'+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,...(user?{'oai-authenticated-user-id':'test-owner'}:{})},body:JSON.stringify(body)});
@@ -17,6 +17,32 @@ beforeAll(async()=>{
 beforeEach(async()=>{await env.DB.batch(['sources','settings','meta'].map(table=>env.DB.prepare('DELETE FROM '+table)));});
 afterAll(async()=>{await mf?.dispose();});
 describe('authenticated bulk source import API',()=>{
+ it('clears only a changed or deleted source checkpoints and leaves pause and similar keys intact',async()=>{
+  const source=await createSource(env,{platform:'youtube',locator:'BeforeEdit'});
+  const buffer='ingest-buffer-v1:'+source.id;
+  const owned=[buffer,'rss-cursor:'+source.id,'youtube-upload-cursor:'+source.id,'bilibili-upload-cursor:'+source.id,'github-star-cursor-v2:'+source.id,...Array.from({length:16},(_,index)=>buffer+':'+index)];
+  const neighbors=[buffer+'-neighbor',buffer+':0:neighbor','rss-cursor:'+source.id+'-neighbor','global-checkpoint'];
+  for(const key of [...owned,...neighbors])await env.DB.prepare('INSERT INTO meta(key,value) VALUES (?,?)').bind(key,'retained').run();
+  await updateSourceInput(env,{id:source.id,enabled:false});
+  for(const key of [...owned,...neighbors])expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first('value')).toBe('retained');
+  await updateSourceInput(env,{id:source.id,locator:'AfterEdit'});
+  for(const key of owned)expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first()).toBeNull();
+  for(const key of neighbors)expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first('value')).toBe('retained');
+  for(const key of owned)await env.DB.prepare('INSERT INTO meta(key,value) VALUES (?,?)').bind(key,'delete-me').run();
+  await deleteSource(env,source.id);
+  for(const key of owned)expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first()).toBeNull();
+  for(const key of neighbors)expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first('value')).toBe('retained');
+ });
+
+ it('atomically caps hosted enabled sources at thirty under concurrent imports',async()=>{
+  const hostedEnv={...env,HOSTING_MODE:'hosted'} as Env;
+  for(let index=0;index<29;index++)await updateSource(env,{id:'hosted-'+index,name:'Source '+index,platform:'youtube',locator:'Channel'+index,topics:[],enabled:true});
+  const settled=await Promise.allSettled(['One','Two','Three'].map(locator=>createSource(hostedEnv,{platform:'youtube',locator})));
+  expect(settled.filter(item=>item.status==='fulfilled')).toHaveLength(1);expect((await listSources(env)).filter(item=>item.enabled)).toHaveLength(30);
+  const paused=await createSource(hostedEnv,{platform:'youtube',locator:'Paused',enabled:false});await expect(updateSourceInput(hostedEnv,{id:paused.id,enabled:true})).rejects.toMatchObject({status:400});
+  await updateSourceInput(hostedEnv,{id:'hosted-0',enabled:false});expect(await updateSourceInput(hostedEnv,{id:paused.id,enabled:true})).toMatchObject({id:paused.id,enabled:true});
+ });
+
  it('requires owner authentication and same-origin writes for both phases',async()=>{
   for(const path of ['preview','commit']){
    expect((await handleApi(request(path,{},false),env)).status).toBe(401);

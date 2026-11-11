@@ -12,7 +12,7 @@ function sensitiveLocator(locator:string):boolean{return hasSensitiveAiInput(pla
 function sensitiveDocument(input:string):boolean{
  return hasSensitiveAiInput(input);
 }
-export interface ImportCandidate {id:string;name:string;platform:Source['platform'];locator:string;topics:Topic[];enabled:boolean;origin:'deterministic'|'ai';error?:string;existingId?:string;}
+export interface ImportCandidate {id:string;name:string;platform:Source['platform'];locator:string;topics:Topic[];enabled:boolean;origin:'deterministic'|'ai';error?:string;existingId?:string;verification?:FeedPreview;}
 export interface ImportError {id?:string;index:number;input:string;message:string;}
 export interface ImportPreview {candidates:ImportCandidate[];errors:ImportError[];warnings:string[];ai:{status:'not_requested'|'completed'|'needsConfiguration'};total:number;}
 export interface SourceDiscoveryMessage {role:'user'|'assistant';content:string;}
@@ -120,12 +120,39 @@ async function discoverRss(candidates:ImportCandidate[],resolver?:PublicDnsResol
    if(!feedUrl)throw new Error('No samehost feed');
    const feed=await fetchSafe(feedUrl,{maxBytes:262144,timeout:6000,resolver,maxRedirects:1,sameOriginRedirects:true});
    if(new URL(feed.url).hostname!==host||/<!DOCTYPE|<!ENTITY/i.test(feed.text)||XMLValidator.validate(feed.text)!==true)throw new Error('Invalid feed');
-   const parsed=new XMLParser({ignoreAttributes:false,processEntities:false}).parse(feed.text);if(!parsed.rss&&!parsed.feed)throw new Error('Invalid feed');
+   const verification=validateFeedPreview(feed.text);
    const normalized=await normalizeSourceInput({platform:'rss',name:candidate.name,locator:feed.url,topics:candidate.topics,enabled:candidate.enabled},undefined,resolver,'url-only');
-   result[index]={...candidate,...normalized,platform:'rss'};
+   result[index]={...candidate,...normalized,platform:'rss',verification};
   }catch{warnings.push({index,message:'未发现可验证的同站 RSS，已保留手动来源：'+candidate.name});}
  }));
  return {candidates:result,warnings:warnings.sort((a,b)=>a.index-b.index).map(warning=>warning.message)};
+}
+export interface FeedPreview {status:'valid'|'empty'|'unverified';format?:'RSS'|'Atom'|'RDF';items?:number;checkedAt?:string;warnings?:string[];}
+/** Syntax alone is insufficient: inspect usable content and safe public entry links. */
+export function validateFeedPreview(xml:string):FeedPreview{
+ if(/<!DOCTYPE|<!ENTITY/i.test(xml)||XMLValidator.validate(xml)!==true)throw new HttpError(400,'地址没有返回有效的 RSS / Atom / RDF 文档。');
+ const parsed=new XMLParser({ignoreAttributes:false,processEntities:false,removeNSPrefix:true}).parse(xml);const root=object(parsed);if(!root)throw new HttpError(400,'地址没有返回有效的 RSS / Atom / RDF 文档。');
+ const rss=object(root.rss),atom=object(root.feed),rdf=object(root['rdf:RDF'])||object(root.RDF);const channel=rss&&object(rss.channel);
+ if(!channel&&!atom&&!rdf)throw new HttpError(400,'地址没有返回有效的 RSS / Atom / RDF 文档。');
+ const raw=atom?.entry??channel?.item??rdf?.item;const entries=raw===undefined?[]:Array.isArray(raw)?raw:[raw];
+ const warnings:string[]=[];let usable=0;
+ const textValue=(value:unknown):string=>typeof value==='string'?value:typeof value==='number'?String(value):object(value)?textValue(object(value)!['#text']):'';
+ for(const rawEntry of entries.slice(0,100)){
+  const entry=object(rawEntry);if(!entry)continue;const title=plainText(textValue(entry.title));const summary=plainText(textValue(entry.description??entry.summary??entry.content??entry['content:encoded']));
+  let link=textValue(entry.link);if(atom){const links=Array.isArray(entry.link)?entry.link:[entry.link];const alternate=links.map(object).find(value=>value&&(!value['@_rel']||value['@_rel']==='alternate'));link=alternate?textValue(alternate['@_href']):link;}
+  if(/^(?:rss[ -]?bridge|rsshub)?\s*(?:error|错误|异常)\b/i.test(title)&&(!link||/error|exception|stack trace|captcha|验证码|登录失败/i.test(summary)))continue;
+  try{validatePublicUrl(link);}catch{if(/^http:\/\//i.test(link))warnings.push('条目使用 HTTP 链接，需要验证 HTTPS 升级后才能读取。');continue;}
+  if(title||summary)usable++;
+ }
+ if(entries.length&&!usable)throw new HttpError(400,'Feed 没有可安全读取的条目，可能返回错误消息、HTTP 链接或缺少原文地址。');
+ return {status:usable?'valid':'empty',format:atom?'Atom':rdf?'RDF':'RSS',items:entries.length,checkedAt:new Date().toISOString(),...(warnings.length?{warnings:[...new Set(warnings)]}:{})};
+}
+async function verifyFeedCandidates(candidates:ImportCandidate[],resolver?:PublicDnsResolver):Promise<ImportCandidate[]>{
+ let checked=candidates.filter(candidate=>candidate.verification).length;return Promise.all(candidates.map(async candidate=>{
+  if(candidate.platform!=='rss'||candidate.error||candidate.existingId||candidate.verification)return candidate;
+  if(checked++>=5)return {...candidate,verification:{status:'unverified' as const}};
+  try{const feed=await fetchSafe(candidate.locator,{maxBytes:524288,timeout:6000,resolver,maxRedirects:1,sameOriginRedirects:true});return {...candidate,verification:validateFeedPreview(feed.text)};}catch(error){const message=error instanceof HttpError?error.message:error instanceof Error&&/^来源(?:暂时无法读取（HTTP \d{3}）。|内容过大，暂不导入。|跳转过多。|返回了无效跳转。)$/.test(error.message)?error.message:'暂时无法验证 Feed，请检查地址、公开访问权限或稍后重试。';return {...candidate,error:message,verification:{status:'unverified' as const}};}
+ }));
 }
 function markDiscoveredDuplicates(candidates:ImportCandidate[],existing:Source[]):ImportCandidate[]{
  const seen=new Set<string>();return candidates.map(candidate=>{const item={...candidate};if(item.error)return item;const key=sourceComparisonKey(item);const old=existing.find(source=>sourceComparisonKey(source)===key);if(old)item.existingId=old.id;else if(seen.has(key))item.error='此清单中已包含相同来源。';seen.add(key);return item;});
@@ -133,11 +160,15 @@ function markDiscoveredDuplicates(candidates:ImportCandidate[],existing:Source[]
 export async function previewSourceImport(env:Env,body:Record<string,unknown>,resolver?:PublicDnsResolver):Promise<ImportPreview>{
  if(typeof body.text!=='string')throw new HttpError(400,'请粘贴订阅清单或文件内容。');
  if(new TextEncoder().encode(body.text).byteLength>MAX_BYTES)throw new HttpError(413,'批量导入内容不能超过 64KB。');
+ if(body.verifyFeeds!==undefined&&typeof body.verifyFeeds!=='boolean')throw new HttpError(400,'Feed 验证选项必须为布尔值。');
  if(body.useAi!==undefined&&typeof body.useAi!=='boolean')throw new HttpError(400,'AI 辅助选项必须为布尔值。');
  const sensitive=sensitiveDocument(body.text);if(body.useAi===true&&sensitive)throw new HttpError(400,'输入疑似包含密钥、密码或私密链接，未发送给 AI。请移除后重试。');
  const dns=new Map<string,Promise<string[]>>();const realResolver=resolver||resolvePublicDns;const requestResolver:PublicDnsResolver=hostname=>{let result=dns.get(hostname);if(!result){result=realResolver(hostname);dns.set(hostname,result);}return result;};
- const existing=await listSources(env);let candidates=await normalizeCandidates(parseDocument(body.text),existing,resolver);const discovery=await discoverRss(candidates,requestResolver);candidates=markDiscoveredDuplicates(discovery.candidates,existing);const warnings:string[]=['导入仅校验公开 HTTPS 地址格式；能否读取会在首次更新前通过公开 DNS 安全检查。',...discovery.warnings];let status:ImportPreview['ai']['status']='not_requested';
+ const existing=await listSources(env);let candidates=await normalizeCandidates(parseDocument(body.text),existing,resolver);const discovery=await discoverRss(candidates,requestResolver);candidates=markDiscoveredDuplicates(discovery.candidates,existing);const warnings:string[]=[body.verifyFeeds===true?'本次最多验证 5 个 Feed 的格式与条目，验证仅代表当前响应；后续更新仍会进行公开 DNS 安全检查。':'导入仅校验公开 HTTPS 地址格式；能否读取会在首次更新前通过公开 DNS 安全检查。',...discovery.warnings];let status:ImportPreview['ai']['status']='not_requested';
  if(body.useAi===true){const {assistSourceImport}=await import('./ai');const assisted=await assistSourceImport(env,body.text,candidates);status=assisted.status;warnings.push(...assisted.warnings);if(assisted.candidates.length>MAX_CANDIDATES)throw new HttpError(400,'AI 返回了过多候选来源。');candidates=await normalizeCandidates(assisted.candidates.map(({error,...candidate})=>candidate),existing,resolver,assisted.candidates);}
+ if(body.verifyFeeds===true)candidates=await verifyFeedCandidates(candidates,requestResolver);
+ if(candidates.some(candidate=>candidate.verification?.status==='unverified'))warnings.push('本次最多检查 5 个 Feed；其余来源仍需首次更新验证。');
+ if(candidates.some(candidate=>candidate.verification?.status==='empty'))warnings.push('空 Feed 只能确认格式，尚未验证到可读取条目。');
  if(candidates.some(candidate=>candidate.platform==='web'))warnings.push('普通网站保留为手动来源；只有明确的 RSS 地址会自动更新。');
  if(sensitive)warnings.push('请勿粘贴密码、API 密钥或带 token 的私密链接；敏感链接已隐藏，不会导入。');
  const errors=candidates.flatMap((candidate,index)=>candidate.error?[{id:candidate.id,index,input:candidate.locator,message:candidate.error}]:[]);

@@ -15,6 +15,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: node --check scripts/preflight.mjs && node --check scripts/deploy.mjs
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

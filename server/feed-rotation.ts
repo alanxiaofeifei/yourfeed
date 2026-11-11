@@ -32,7 +32,7 @@ export function validateFeedBatchInput(body:Record<string,unknown>,now=Date.now(
 
 /** The cutoff keeps a batch from admitting newly synced/backfilled content mid-page. */
 export async function cachedBatchContent(env:Env,asOf:string):Promise<ContentItem[]> {
-  const rows=await env.DB.prepare('SELECT json FROM content WHERE updated_at<=? ORDER BY updated_at DESC LIMIT 4000').bind(asOf).all<{json:string}>();
+  const rows=await env.DB.prepare('SELECT json FROM content WHERE updated_at<=? ORDER BY updated_at DESC,id DESC LIMIT 1000').bind(asOf).all<{json:string}>();
   return rows.results.map(row=>JSON.parse(row.json) as ContentItem);
 }
 

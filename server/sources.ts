@@ -1,8 +1,11 @@
 import type {Source,Topic} from '../shared/types';
-import {listSources,listContent,getState,setState,type Env} from './db';
+import {listSources,getState,setState,type Env} from './db';
 import {HttpError} from './security';
 import {canonicalUrl,plainText,resolveContentUrl,validatePublicUrl} from './fetch-safe';
 import type {PublicDnsResolver} from './provider-endpoint';
+import {sourcePlatformWarning} from '../shared/source-export';
+const hosted=(env:Env)=>String((env as Env&{HOSTING_MODE?:string}).HOSTING_MODE||'')==='hosted';
+const active=(source:Source)=>source.enabled&&!(source as Source&{blocked?:boolean}).blocked;
 const PLATFORMS=new Set<Source['platform']>(['youtube','bilibili','rss','github','x','web']);
 const TOPICS=new Set<Topic>(['ai','automation','network','linux','it','code','making','cooking','science','humanities','english','tools']);
 type SourceInput=Record<string,unknown>;
@@ -43,6 +46,7 @@ export async function normalizeSourceInput(value:unknown,existing?:Source,resolv
    const u=validation==='url-only'||existing?.platform===platform&&existing.locator===locator?validatePublicUrl(locator):await resolveContentUrl(locator,resolver);
    if(platform==='x'&&!['x.com','www.x.com','twitter.com','www.twitter.com'].includes(u.hostname))throw new Error('X 来源需要使用 x.com 或 twitter.com 链接。');
    locator=canonicalUrl(u.toString());
+   if(platform==='rss'&&sourcePlatformWarning({platform:'rss',locator})&&(!existing||existing.locator!==locator))throw new Error('Reddit 已宣布于 2026 年 11 月 13 日停止 RSS，不再添加新的 RSS 依赖。请保存原文链接。');
   }
  }catch(error){sourceError(error);}
  const fallbackName=platform==='github'?`${locator} 的 GitHub Stars`:platform==='youtube'?`YouTube · ${locator}`:platform==='bilibili'?`B站 · ${locator}`:new URL(locator).hostname;
@@ -58,29 +62,41 @@ export async function createSource(env:Env,value:unknown,resolver?:PublicDnsReso
  const identity=sourceComparisonKey(normalized);if(existing.some(s=>sourceComparisonKey(s)===identity))throw new HttpError(409,'这个内容来源已经添加。');
  if(existing.length>=200)throw new HttpError(400,'最多添加 200 个内容来源。');
  const source:Source={id:'source-'+crypto.randomUUID(),...normalized};if(typeof input.blocked==='boolean')(source as Source&{blocked?:boolean}).blocked=input.blocked;
+ if(hosted(env)&&active(source)&&existing.filter(active).length>=30)throw new HttpError(400,'免费托管每人最多启用 30 个来源，请先暂停部分来源。');
  // D1 serializes the check and insert. Identity is independent from mutable
  // source IDs; legacy rows were compared above and are never overwritten.
- const inserted=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (SELECT COUNT(*) FROM sources)<200 AND NOT EXISTS (SELECT 1 FROM sources WHERE json_extract(json,'$._identityKey')=?)").bind(source.id,JSON.stringify({...source,_identityKey:identity}),identity).run();
- if(inserted.meta.changes!==1){if((await listSources(env)).some(s=>sourceComparisonKey(s)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
+ const inserted=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (SELECT COUNT(*) FROM sources)<200 AND NOT EXISTS (SELECT 1 FROM sources WHERE json_extract(json,'$._identityKey')=?) AND (?=0 OR (SELECT COUNT(*) FROM sources WHERE json_extract(json,'$.enabled')=1 AND COALESCE(json_extract(json,'$.blocked'),0)=0)<30)").bind(source.id,JSON.stringify({...source,_identityKey:identity}),identity,hosted(env)&&active(source)?1:0).run();
+ if(inserted.meta.changes!==1){if(hosted(env)&&active(source)&&(await listSources(env)).filter(active).length>=30)throw new HttpError(400,'免费托管每人最多启用 30 个来源，请先暂停部分来源。');if((await listSources(env)).some(s=>sourceComparisonKey(s)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
  await setState(env,'sync-round-started','0');return source;
+}
+/** Source IDs stay stable, but changing their locator must discard the old
+ * adapter's checkpoint. Buffer chunks are explicitly bounded by ingest.ts to
+ * indexes 0..15, so exact keys avoid deleting another source's similar prefix. */
+async function clearSourceOperationalState(env:Env,id:string):Promise<void>{
+ const buffer='ingest-buffer-v1:'+id;
+ const keys=[buffer,'rss-cursor:'+id,'youtube-upload-cursor:'+id,'bilibili-upload-cursor:'+id,'github-star-cursor-v2:'+id,...Array.from({length:16},(_,index)=>buffer+':'+index)];
+ await env.DB.prepare('DELETE FROM meta WHERE key IN ('+keys.map(()=>'?').join(',')+')').bind(...keys).run();
 }
 export async function updateSourceInput(env:Env,value:unknown,resolver?:PublicDnsResolver):Promise<Source>{
  const input=object(value);if(typeof input.id!=='string'||input.id.length>200)throw new HttpError(400,'请指定内容来源。');
  let existing=(await listSources(env)).find(s=>s.id===input.id);
- if(!existing){const item=(await listContent(env)).find(i=>i.sourceId===input.id);if(!item)throw new HttpError(404,'内容来源不存在。');existing={id:item.sourceId,name:item.sourceName,platform:'web',locator:item.url,topics:item.topics,enabled:true,status:'manual'};}
+ if(!existing){const row=await env.DB.prepare('SELECT json FROM content WHERE source_id=? ORDER BY updated_at DESC,id DESC LIMIT 1').bind(input.id).first<{json:string}>();const item=row?JSON.parse(row.json) as import('../shared/types').ContentItem:undefined;if(!item)throw new HttpError(404,'内容来源不存在。');existing={id:item.sourceId,name:item.sourceName,platform:'web',locator:item.url,topics:item.topics,enabled:true,status:'manual'};}
  const normalized=await normalizeSourceInput(input,existing,resolver);
  const duplicates=await listSources(env);if(duplicates.some(s=>s.id!==existing!.id&&sourceComparisonKey(s)===sourceComparisonKey(normalized)))throw new HttpError(409,'这个内容来源已经添加。');
  const changed=existing.platform!==normalized.platform||existing.locator!==normalized.locator;
  const source:Source={...existing,...normalized,id:existing.id};
- if(changed){delete source.lastSuccess;delete source.error;source.status=normalized.status;delete (source as Source&{lastAttempt?:number}).lastAttempt;}
+ if(changed){delete source.lastSuccess;delete source.error;source.status=normalized.status;for(const key of ['lastAttempt','etag','lastModified','failureCount','nextRetryAt','pendingEntries','lastFingerprint','cursor','entryCursor'])(source as unknown as Record<string,unknown>)[key]!==undefined&&delete (source as unknown as Record<string,unknown>)[key];}
  if(typeof input.blocked==='boolean')(source as Source&{blocked?:boolean}).blocked=input.blocked;
- const identity=sourceComparisonKey(normalized);const written=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (EXISTS (SELECT 1 FROM sources WHERE id=?) OR (SELECT COUNT(*) FROM sources)<200) AND NOT EXISTS (SELECT 1 FROM sources WHERE id<>? AND json_extract(json,'$._identityKey')=?) ON CONFLICT(id) DO UPDATE SET json=excluded.json").bind(source.id,JSON.stringify({...source,_identityKey:identity}),source.id,source.id,identity).run();
- if(written.meta.changes!==1){if((await listSources(env)).some(item=>item.id!==source.id&&sourceComparisonKey(item)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
+ if(hosted(env)&&active(source)&&duplicates.filter(item=>item.id!==source.id&&active(item)).length>=30)throw new HttpError(400,'免费托管每人最多启用 30 个来源，请先暂停部分来源。');
+ const identity=sourceComparisonKey(normalized);const written=await env.DB.prepare("INSERT INTO sources(id,json) SELECT ?,? WHERE (EXISTS (SELECT 1 FROM sources WHERE id=?) OR (SELECT COUNT(*) FROM sources)<200) AND NOT EXISTS (SELECT 1 FROM sources WHERE id<>? AND json_extract(json,'$._identityKey')=?) AND (?=0 OR (SELECT COUNT(*) FROM sources WHERE id<>? AND json_extract(json,'$.enabled')=1 AND COALESCE(json_extract(json,'$.blocked'),0)=0)<30) ON CONFLICT(id) DO UPDATE SET json=excluded.json").bind(source.id,JSON.stringify({...source,_identityKey:identity}),source.id,source.id,identity,hosted(env)&&active(source)?1:0,source.id).run();
+ if(written.meta.changes!==1){if(hosted(env)&&active(source)&&(await listSources(env)).filter(item=>item.id!==source.id&&active(item)).length>=30)throw new HttpError(400,'免费托管每人最多启用 30 个来源，请先暂停部分来源。');if((await listSources(env)).some(item=>item.id!==source.id&&sourceComparisonKey(item)===identity))throw new HttpError(409,'这个内容来源已经添加。');throw new HttpError(400,'最多添加 200 个内容来源。');}
+ if(changed)await clearSourceOperationalState(env,source.id);
  if(changed||input.enabled===true)await setState(env,'sync-round-started','0');return source;
 }
 export async function deleteSource(env:Env,id:unknown):Promise<void>{
  if(typeof id!=='string'||id.length>200)throw new HttpError(400,'请指定内容来源。');
  if(!(await listSources(env)).some(s=>s.id===id))throw new HttpError(404,'内容来源不存在。');
  await env.DB.prepare('DELETE FROM sources WHERE id=?').bind(id).run();
+ await clearSourceOperationalState(env,id);
  const state=await getState(env,'sync-queue');if(state){try{const queue=JSON.parse(state);if(Array.isArray(queue))await setState(env,'sync-queue',JSON.stringify(queue.filter(value=>value!==id)));}catch{}}
 }

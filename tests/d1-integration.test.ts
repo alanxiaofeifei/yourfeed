@@ -37,6 +37,16 @@ beforeEach(async () => {
 afterAll(async () => { await mf?.dispose(); });
 
 describe('migrated D1 API integration', () => {
+  it('keeps storage changes explicit, remembers the background owner, and exports no credentials',async()=>{
+    expect((await api('/api/storage','PUT',{})).status).toBe(400);
+    expect((await api('/api/background')).value).toMatchObject({enabled:false,aiEnabled:false,schedulerConfigured:false});
+    expect((await api('/api/background','PUT',{enabled:false,aiEnabled:true})).status).toBe(200);
+    expect(await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind('background:owner').first('value')).toBe('integration-owner');
+    await api('/api/feedback','POST',{id:'example-0',patch:{liked:true,saved:true}});
+    await api('/api/settings','PUT',{provider:'openai',model:'gpt-6.1-sol',key:'not-real-secret-for-archive',enabled:false});
+    const archive=await api('/api/export?filter=liked');expect(archive.status).toBe(200);expect(archive.value.items).toHaveLength(1);expect(archive.value.feedback).toMatchObject({'example-0':{liked:true,saved:true}});expect(JSON.stringify(archive.value)).not.toContain('not-real-secret-for-archive');
+    for(const path of ['/api/library','/api/export','/api/storage','/api/background'])expect((await api(path,'GET',undefined,'')).status).toBe(401);
+  });
   it('reports the actual migrated schema and missing storage correctly', async () => {
     const healthy = await api('/api/health');
     expect(healthy.status).toBe(200);
