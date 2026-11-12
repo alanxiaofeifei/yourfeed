@@ -6,6 +6,7 @@ import type { ContentItem } from '../../shared/types';
 import './DailyBriefing.css';
 import { useI18n, localeTag } from '../i18n';
 import ContentActions from './ContentActions';
+import { computeStaggerDelay } from './FeedMotion';
 
 interface Briefing {
   date: string;
@@ -59,7 +60,8 @@ export default function DailyBriefing({ revision, onOpen, onNews }: {
       : briefing?.items.length ? <div className="daily-briefing-list">{briefing.items.map(({ item, reason, signal }, index) => {
         const sourceDate = new Date(item.publishedAt);
         const published = Number.isFinite(sourceDate.getTime()) ? sourceDate.toLocaleDateString(localeTag(language), { timeZone:briefing?.timeZone||'UTC', month: 'numeric', day: 'numeric' }) : '';
-        return <article className="daily-pick" key={item.id}>
+        const pickDelay = computeStaggerDelay(index, 3, 55);
+        return <article className="daily-pick" key={item.id} style={{ '--pick-delay': pickDelay, animationDelay: pickDelay } as React.CSSProperties}>
           <span className="daily-pick-number" aria-hidden="true">0{index + 1}</span>
           <div className="daily-pick-content">
             <div className="daily-pick-meta"><span className="daily-pick-signal">{signal}</span><span>{item.sourceName}</span><time dateTime={item.publishedAt}>{published}</time>{item.relatedSources && item.relatedSources.length > 1 && <span>{item.relatedSources.length} {t('个来源','sources')}</span>}</div>
