@@ -9,7 +9,7 @@
 
 **中文 · 55 秒 · 第一版。** 简短的动画介绍，不是当前界面实录，也不是首次配置教程。演示新闻与来源均为虚构示例；模型服务的免费额度和可用性以提供商政策为准。
 
-[![观看 YourFeed 首版介绍视频](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg)](https://alanzhu.dev/#yourfeed-video)
+<a href="https://alanzhu.dev/#yourfeed-video"><img src="https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg" width="320" alt="观看 YourFeed 首版中文介绍（55 秒）"></a>
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
