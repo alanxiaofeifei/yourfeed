@@ -91,6 +91,96 @@ export function EditorialSignalMark({
 }
 
 const SCRAMBLE_CHARS = '0123456789ABCDEF!@#$%&*?_~';
+const CJK_CHAR_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/u;
+const CJK_CLOSING_PUNCT_RE = /^[，。！？；：、）》」』】〉》”’›»]$/u;
+const CJK_OPENING_PUNCT_RE = /^[（《「『【〈《“‘‹«]$/u;
+
+export interface KineticToken {
+  type: 'word' | 'space';
+  text: string;
+  chars: Array<{ char: string; index: number }>;
+}
+
+export function tokenizeKineticText(text: string): KineticToken[] {
+  const codePoints = Array.from(text);
+  const tokens: KineticToken[] = [];
+  let i = 0;
+
+  while (i < codePoints.length) {
+    const ch = codePoints[i];
+
+    if (/^\s$/u.test(ch)) {
+      const chars: Array<{ char: string; index: number }> = [];
+      while (i < codePoints.length && /^\s$/u.test(codePoints[i])) {
+        chars.push({ char: ' ', index: i });
+        i++;
+      }
+      tokens.push({
+        type: 'space',
+        text: ' ',
+        chars,
+      });
+      continue;
+    }
+
+    if (CJK_OPENING_PUNCT_RE.test(ch) || CJK_CHAR_RE.test(ch)) {
+      const chars: Array<{ char: string; index: number }> = [];
+      while (i < codePoints.length && CJK_OPENING_PUNCT_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      if (i < codePoints.length && CJK_CHAR_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      while (i < codePoints.length && CJK_CLOSING_PUNCT_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      tokens.push({
+        type: 'word',
+        text: chars.map(c => c.char).join(''),
+        chars,
+      });
+      continue;
+    }
+
+    if (CJK_CLOSING_PUNCT_RE.test(ch)) {
+      const prev = tokens[tokens.length - 1];
+      if (prev && prev.type === 'word' && prev.chars.length < 8) {
+        prev.chars.push({ char: ch, index: i });
+        prev.text += ch;
+      } else {
+        tokens.push({
+          type: 'word',
+          text: ch,
+          chars: [{ char: ch, index: i }],
+        });
+      }
+      i++;
+      continue;
+    }
+
+    const chars: Array<{ char: string; index: number }> = [];
+    while (
+      i < codePoints.length &&
+      !/^\s$/u.test(codePoints[i]) &&
+      !CJK_CHAR_RE.test(codePoints[i]) &&
+      !CJK_OPENING_PUNCT_RE.test(codePoints[i]) &&
+      !CJK_CLOSING_PUNCT_RE.test(codePoints[i])
+    ) {
+      chars.push({ char: codePoints[i], index: i });
+      i++;
+    }
+    tokens.push({
+      type: 'word',
+      text: chars.map(c => c.char).join(''),
+      chars,
+    });
+  }
+
+  return tokens;
+}
 
 export function KineticHeadline({
   text,
@@ -105,11 +195,13 @@ export function KineticHeadline({
 }) {
   const reducedMotion = useReducedMotion();
   const [scrambled, setScrambled] = useState(scrambleKeyword || '');
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    if (!scrambleKeyword || reducedMotion) return;
+    if (!scrambleKeyword) return;
+    if (reducedMotion) {
+      setScrambled(scrambleKeyword);
+      return;
+    }
 
     let iteration = 0;
     const target = scrambleKeyword;
@@ -136,34 +228,42 @@ export function KineticHeadline({
   }, [scrambleKeyword, reducedMotion]);
 
   const Tag = as;
-
-  if (reducedMotion || !mounted) {
-    return (
-      <Tag className={`kinetic-headline ${className}`.trim()} aria-label={text}>
-        {text}
-        {scrambleKeyword && <span className="kinetic-scramble-tag"> [{scrambleKeyword}]</span>}
-      </Tag>
-    );
-  }
-
-  // Split text into characters for kinetic typographic entrance
-  const chars = Array.from(text);
+  const tokens = tokenizeKineticText(text);
 
   return (
-    <Tag className={`kinetic-headline ${className}`.trim()} aria-label={text}>
+    <Tag
+      className={`kinetic-headline ${className}`.trim()}
+      aria-label={text}
+      data-reduced-motion={reducedMotion ? 'true' : 'false'}
+    >
       <span className="kinetic-chars-wrapper" aria-hidden="true">
-        {chars.map((char, index) => (
-          <span
-            key={`${index}-${char}`}
-            className="kinetic-char"
-            style={{
-              '--char-index': index,
-              animationDelay: `${index * 38}ms`,
-            } as React.CSSProperties}
-          >
-            {char === ' ' ? '\u00A0' : char}
-          </span>
-        ))}
+        {tokens.map((token, tokenIndex) =>
+          token.type === 'space' ? (
+            ' '
+          ) : (
+            <span
+              key={`word-${tokenIndex}-${token.text}`}
+              className="kinetic-word"
+              aria-hidden="true"
+            >
+              {token.chars.map(({ char, index }) => (
+                <span
+                  key={`${index}-${char}`}
+                  className="kinetic-char"
+                  aria-hidden="true"
+                  style={
+                    {
+                      '--char-index': index,
+                      animationDelay: `${index * 28}ms`,
+                    } as React.CSSProperties
+                  }
+                >
+                  {char}
+                </span>
+              ))}
+            </span>
+          ),
+        )}
       </span>
       {scrambleKeyword && (
         <span className="kinetic-scramble-badge" aria-hidden="true">

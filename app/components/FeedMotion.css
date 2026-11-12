@@ -113,17 +113,26 @@
 }
 
 .hero-copy-stage {
+  min-width: 0;
+  flex: 1;
   animation: editorialHeroStageIn var(--motion-hero) var(--motion-ease-out) both;
 }
 
 .kinetic-headline {
-  display: inline-block;
+  display: block;
   margin: 0;
   position: relative;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .kinetic-chars-wrapper {
   display: inline;
+}
+
+.kinetic-word {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .kinetic-char {
@@ -131,8 +140,15 @@
   opacity: 0;
   transform: translate3d(0, 70px, 0) scale(0.85);
   filter: blur(8px);
-  animation: kineticCharFlyIn 1100ms var(--motion-ease-out) forwards;
+  animation: kineticCharFlyIn 820ms var(--motion-ease-out) both;
   will-change: transform, opacity, filter;
+}
+
+.kinetic-headline[data-reduced-motion='true'] .kinetic-char {
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+  animation: none !important;
 }
 
 .kinetic-scramble-badge {
@@ -960,7 +976,14 @@
     height: 48px;
   }
   .editorial-edition-pill {
-    display: none;
+    padding: 2px 8px;
+    font-size: 7.5px;
+    letter-spacing: 1px;
+  }
+  .kinetic-scramble-badge {
+    margin-left: 8px;
+    padding: 2px 6px;
+    font-size: 10px;
   }
   .daily-pick::before {
     left: -16px;
