@@ -7,9 +7,9 @@ import {translate,type Translate} from '../shared/locales';
 export {LANGUAGE_OPTIONS,localeFromTag,localeTag,type Language,translate,type Translate};
 interface I18n {language:Language;setLanguage:(language:Language)=>void;t:Translate;}
 const storageKey='yourfeed-language';
-const I18nContext=createContext<I18n>({language:'zh',setLanguage:()=>{},t:zh=>zh});
-export function I18nProvider({children}:{children:ReactNode}) {
- const [language,updateLanguage]=useState<Language>('zh');
+export const I18nContext=createContext<I18n>({language:'zh',setLanguage:()=>{},t:zh=>zh});
+export function I18nProvider({children,initialLanguage}:{children:ReactNode;initialLanguage?:Language}) {
+ const [language,updateLanguage]=useState<Language>(initialLanguage||'zh');
  const setLanguage=useCallback((value:Language)=>{if(!isLanguage(value))return;updateLanguage(value);document.documentElement.lang=localeTag(value);try{localStorage.setItem(storageKey,value);}catch{}},[]);
  useEffect(()=>{
   let saved:string|null=null;try{saved=localStorage.getItem(storageKey);}catch{}

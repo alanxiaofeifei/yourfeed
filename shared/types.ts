@@ -1,7 +1,7 @@
 import type {Language} from './language';
 export type Kind = 'video' | 'article' | 'news' | 'post' | 'project';
 export type Mode = 'rest' | 'grow';
-export type Provider = 'openai' | 'deepseek' | 'glm' | 'custom';
+export type Provider = 'openai' | 'deepseek' | 'glm' | 'gemini' | 'groq' | 'nvidia' | 'cerebras' | 'custom';
 export type Topic = 'ai' | 'automation' | 'network' | 'linux' | 'it' | 'code' | 'making' | 'cooking' | 'science' | 'humanities' | 'english' | 'tools';
 export interface Source { id: string; name: string; platform: 'youtube'|'bilibili'|'rss'|'github'|'x'|'web'; locator: string; topics: Topic[]; enabled: boolean; status?: string; lastSuccess?: string; error?: string; etag?: string; lastModified?: string; failureCount?: number; nextRetryAt?: string; pendingEntries?: number; skippedEntries?: number; lastWarning?: string; lastAttempt?: number; }
 export interface Analysis { inputTruncated?: boolean; inputChars?: number; originalChars?: number; summaryLanguage?: Language; profileVersion?: number; bullets: string[]; relevance: string; topics: Topic[]; coverage: 'full_text'|'excerpt'|'metadata'; references: string[]; eventKey?: string; model: string; }

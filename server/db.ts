@@ -6,12 +6,11 @@ import { getProfile } from './profile';
 import { profileDate } from '../shared/profile';
 import {isHosted} from './hosted';
 import {honestContent} from '../shared/content-coverage';
-export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
-export const DEFAULT_MODELS: Record<Provider,string> = {openai:'gpt-6.1-sol',deepseek:'deepseek-flash',glm:'glm-5.3',custom:''};
+import { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS, PROVIDER_METADATA } from '../shared/providers';
+export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; GEMINI_API_KEY?:string; GROQ_API_KEY?:string; NVIDIA_API_KEY?:string; CEREBRAS_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
+export { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS };
 export const defaultConfig: ProviderConfig = {provider:'openai',model:DEFAULT_MODELS.openai,protocol:'responses',responseFormat:'json_schema',reasoningEffort:'low',maxOutputTokens:2048,timeoutSeconds:25,enabled:false,monthlyBudget:20,dailyLimit:20};
-export const PROVIDERS:Provider[]=['openai','deepseek','glm','custom'];
-export const PRESET_BASE_URLS={openai:'https://api.openai.com/v1',deepseek:'https://api.deepseek.com',glm:'https://open.bigmodel.cn/api/paas/v4'};
-function profileDefaults(provider:Provider):ProviderConfig {return {...defaultConfig,provider,model:DEFAULT_MODELS[provider],providerName:provider==='custom'?'自定义兼容接口':provider==='openai'?'OpenAI':provider==='deepseek'?'DeepSeek':'GLM',baseUrl:provider==='custom'?'':PRESET_BASE_URLS[provider],protocol:provider==='openai'?'responses':'chat-completions',responseFormat:provider==='openai'?'json_schema':'json_object',reasoningEffort:provider==='openai'?'low':undefined};}
+function profileDefaults(provider:Provider):ProviderConfig {const meta=PROVIDER_METADATA[provider];return {...defaultConfig,provider,model:meta.defaultModel,providerName:provider==='custom'?'自定义兼容接口':meta.name,baseUrl:meta.baseUrl,protocol:meta.protocol,responseFormat:meta.responseFormat,reasoningEffort:meta.reasoningEffort};}
 export function usagePeriod(timezone='Asia/Taipei') { const day = profileDate(new Date(),timezone);return {day,month:day.slice(0,7)}; }
 export async function getState(env:Env,key:string):Promise<string|null> {return (await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first<{value:string}>())?.value ?? null;}
 export async function setState(env:Env,key:string,value:string):Promise<void> {await env.DB.prepare('INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();}
@@ -81,7 +80,7 @@ export async function getSecret(env:Env,id:string):Promise<string|undefined> {
   if(row){const data=JSON.parse(row.json);if(id==='custom'&&data.boundBaseUrl!==(await getConfig(env,'custom')).baseUrl)throw new HttpError(400,'自定义地址已变化，请重新保存用于该地址的密钥。');return decryptSecret(data.cipher,env.APP_ENCRYPTION_KEY,(typeof env.SECRET_NAMESPACE==='string'?env.SECRET_NAMESPACE:'yourfeed')+':'+id);}
   // Hosted users must configure their own encrypted instance credential.
   if(isHosted(env))return undefined;
-  const name:Record<string,string>={openai:'OPENAI_API_KEY',deepseek:'DEEPSEEK_API_KEY',glm:'GLM_API_KEY',youtube:'YOUTUBE_API_KEY'};
+  const name:Record<string,string>={openai:'OPENAI_API_KEY',deepseek:'DEEPSEEK_API_KEY',glm:'GLM_API_KEY',gemini:'GEMINI_API_KEY',groq:'GROQ_API_KEY',nvidia:'NVIDIA_API_KEY',cerebras:'CEREBRAS_API_KEY',youtube:'YOUTUBE_API_KEY'};
   return typeof env[name[id]]==='string'?String(env[name[id]]):id==='glm'&&typeof env.ZHIPUAI_API_KEY==='string'?env.ZHIPUAI_API_KEY:undefined;
 }
 export async function getProviderKey(env:Env,provider?:Provider):Promise<string|undefined> {return getSecret(env,provider??(await getConfig(env)).provider);}
