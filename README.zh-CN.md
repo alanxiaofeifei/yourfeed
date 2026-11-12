@@ -4,6 +4,15 @@
 
 把视频、文章、新闻、收藏帖子和开源项目放进自己的私人首页。休息时轻松发现，学习时专注进阶。由你的来源和反馈影响推荐，默认打开网站或手动操作时更新；后台更新需另行配置并主动开启。
 
+
+## 首版介绍视频
+
+**中文 · 55 秒 · 第一版。** 简短的动画介绍，不是当前界面实录，也不是首次配置教程。演示新闻与来源均为虚构示例；模型服务的免费额度和可用性以提供商政策为准。
+
+[![观看 YourFeed 首版介绍视频](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg)](https://alanzhu.dev/#yourfeed-video)
+
+[MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
+
 **项目／托管入口：**[yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
 
 **如何登录：**这个地址不开放公众注册，也没有共享演示账户。运营者完成独立实例配置并分配邀请后，受邀用户才能进入自己的实例。没有邀请可以先看[界面截图](#界面预览)，或通过下方按钮部署自己的实例，再使用该实例配置的 `OWNER_EMAIL` 登录。现有站点已部署，不等于新增托管流程、邮件和免费容量已经通过生产验收。
