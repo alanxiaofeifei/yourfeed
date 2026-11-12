@@ -4,7 +4,16 @@
 
 A private home for videos, articles, news, saved posts and open-source projects. Choose a relaxed feed for a break or a focused feed for your next step. Your sources and feedback shape the ranking; updates happen when you open the site or request them, with separately configured opt-in background updates.
 
-**Project / hosted entry:** [yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+
+## First introduction video
+
+**Chinese · 55 seconds · v1.** A short illustrated introduction, not a recording of the current UI or a first-time setup guide. Demo stories and sources are fictional; provider free tiers and availability are subject to their policies.
+
+[![Watch the YourFeed introduction](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg)](https://alanzhu.dev/#yourfeed-video)
+
+[MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
+
+**Project / hosted entry:** [yourfeed.alanzhu.dev](https://yourfeed.alanzhu.dev/)
 
 **How to sign in:** this address is not public registration or a shared demo account. The operator must provision and assign independent instances before invited users can sign in. Visitors without an invitation can see the [screenshots](#interface-preview) or deploy their own instance below. A self-hosted instance uses the `OWNER_EMAIL` configured by its owner. Existing deployed behavior is not evidence that the new hosted setup has passed production acceptance.
 
