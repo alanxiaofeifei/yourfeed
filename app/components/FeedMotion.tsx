@@ -90,6 +90,247 @@ export function EditorialSignalMark({
   );
 }
 
+const SCRAMBLE_CHARS = '0123456789ABCDEF!@#$%&*?_~';
+const CJK_CHAR_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/u;
+const CJK_CLOSING_PUNCT_RE = /^[，。！？；：、）》」』】〉》”’›»]$/u;
+const CJK_OPENING_PUNCT_RE = /^[（《「『【〈《“‘‹«]$/u;
+
+export interface KineticToken {
+  type: 'word' | 'space';
+  text: string;
+  chars: Array<{ char: string; index: number }>;
+}
+
+export function tokenizeKineticText(text: string): KineticToken[] {
+  const codePoints = Array.from(text);
+  const tokens: KineticToken[] = [];
+  let i = 0;
+
+  while (i < codePoints.length) {
+    const ch = codePoints[i];
+
+    if (/^\s$/u.test(ch)) {
+      const chars: Array<{ char: string; index: number }> = [];
+      while (i < codePoints.length && /^\s$/u.test(codePoints[i])) {
+        chars.push({ char: ' ', index: i });
+        i++;
+      }
+      tokens.push({
+        type: 'space',
+        text: ' ',
+        chars,
+      });
+      continue;
+    }
+
+    if (CJK_OPENING_PUNCT_RE.test(ch) || CJK_CHAR_RE.test(ch)) {
+      const chars: Array<{ char: string; index: number }> = [];
+      while (i < codePoints.length && CJK_OPENING_PUNCT_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      if (i < codePoints.length && CJK_CHAR_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      while (i < codePoints.length && CJK_CLOSING_PUNCT_RE.test(codePoints[i])) {
+        chars.push({ char: codePoints[i], index: i });
+        i++;
+      }
+      tokens.push({
+        type: 'word',
+        text: chars.map(c => c.char).join(''),
+        chars,
+      });
+      continue;
+    }
+
+    if (CJK_CLOSING_PUNCT_RE.test(ch)) {
+      const prev = tokens[tokens.length - 1];
+      if (prev && prev.type === 'word' && prev.chars.length < 8) {
+        prev.chars.push({ char: ch, index: i });
+        prev.text += ch;
+      } else {
+        tokens.push({
+          type: 'word',
+          text: ch,
+          chars: [{ char: ch, index: i }],
+        });
+      }
+      i++;
+      continue;
+    }
+
+    const chars: Array<{ char: string; index: number }> = [];
+    while (
+      i < codePoints.length &&
+      !/^\s$/u.test(codePoints[i]) &&
+      !CJK_CHAR_RE.test(codePoints[i]) &&
+      !CJK_OPENING_PUNCT_RE.test(codePoints[i]) &&
+      !CJK_CLOSING_PUNCT_RE.test(codePoints[i])
+    ) {
+      chars.push({ char: codePoints[i], index: i });
+      i++;
+    }
+    tokens.push({
+      type: 'word',
+      text: chars.map(c => c.char).join(''),
+      chars,
+    });
+  }
+
+  return tokens;
+}
+
+export function KineticHeadline({
+  text,
+  scrambleKeyword,
+  className = '',
+  as = 'h1',
+}: {
+  text: string;
+  scrambleKeyword?: string;
+  className?: string;
+  as?: 'h1' | 'h2';
+}) {
+  const reducedMotion = useReducedMotion();
+  const [scrambled, setScrambled] = useState(scrambleKeyword || '');
+
+  useEffect(() => {
+    if (!scrambleKeyword) return;
+    if (reducedMotion) {
+      setScrambled(scrambleKeyword);
+      return;
+    }
+
+    let iteration = 0;
+    const target = scrambleKeyword;
+    const maxIterations = target.length * 3;
+    const interval = setInterval(() => {
+      setScrambled(
+        target
+          .split('')
+          .map((char, index) => {
+            if (char === ' ') return ' ';
+            if (index < iteration / 3) return target[index];
+            return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+          })
+          .join(''),
+      );
+      iteration++;
+      if (iteration >= maxIterations) {
+        setScrambled(target);
+        clearInterval(interval);
+      }
+    }, 45);
+
+    return () => clearInterval(interval);
+  }, [scrambleKeyword, reducedMotion]);
+
+  const Tag = as;
+  const tokens = tokenizeKineticText(text);
+
+  return (
+    <Tag
+      className={`kinetic-headline ${className}`.trim()}
+      aria-label={text}
+      data-reduced-motion={reducedMotion ? 'true' : 'false'}
+    >
+      <span className="kinetic-chars-wrapper" aria-hidden="true">
+        {tokens.map((token, tokenIndex) =>
+          token.type === 'space' ? (
+            ' '
+          ) : (
+            <span
+              key={`word-${tokenIndex}-${token.text}`}
+              className="kinetic-word"
+              aria-hidden="true"
+            >
+              {token.chars.map(({ char, index }) => (
+                <span
+                  key={`${index}-${char}`}
+                  className="kinetic-char"
+                  aria-hidden="true"
+                  style={
+                    {
+                      '--char-index': index,
+                      animationDelay: `${index * 28}ms`,
+                    } as React.CSSProperties
+                  }
+                >
+                  {char}
+                </span>
+              ))}
+            </span>
+          ),
+        )}
+      </span>
+      {scrambleKeyword && (
+        <span className="kinetic-scramble-badge" aria-hidden="true">
+          <span className="scramble-dot" />
+          <span className="scramble-code">{scrambled}</span>
+        </span>
+      )}
+    </Tag>
+  );
+}
+
+export interface NewsTickerItem {
+  id: string;
+  title: string;
+  category?: string;
+  url?: string;
+}
+
+export function NewsTicker({
+  items,
+  title = 'DISPATCH',
+  className = '',
+  onSelect,
+}: {
+  items: NewsTickerItem[];
+  title?: string;
+  className?: string;
+  onSelect?: (item: NewsTickerItem) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  if (!items || items.length === 0) return null;
+
+  // Duplicate items to make seamless continuous loop
+  const displayItems = [...items, ...items];
+
+  return (
+    <div
+      className={`editorial-ticker ${className}`.trim()}
+      role="region"
+      aria-label="Breaking news ticker"
+    >
+      <div className="ticker-badge">
+        <span className="ticker-pulse" />
+        <span className="ticker-title">{title}</span>
+      </div>
+      <div className="ticker-viewport">
+        <div className={`ticker-track ${reducedMotion ? 'reduced' : ''}`}>
+          {displayItems.map((item, index) => (
+            <button
+              key={`${item.id}-${index}`}
+              className="ticker-item"
+              onClick={() => onSelect?.(item)}
+              type="button"
+            >
+              {item.category && <span className="ticker-item-category">{item.category}</span>}
+              <span className="ticker-item-title">{item.title}</span>
+              <span className="ticker-divider" aria-hidden="true">
+                ✦
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function useGlidingTabs<T extends string>(activeKey: T, extraDeps: unknown[] = []) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -160,6 +401,46 @@ export function useEditorialScroll(modalActive = false) {
   return topbarRef;
 }
 
+export function useStickyToolbarProgress() {
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      const doc = document.documentElement;
+      const scrollTop = window.scrollY || doc.scrollTop || 0;
+      const mainArea = document.querySelector('.main-area') as HTMLElement | null;
+      if (!mainArea) return;
+      const areaRect = mainArea.getBoundingClientRect();
+      const areaTop = scrollTop + areaRect.top;
+      const areaHeight = mainArea.offsetHeight;
+      const scrolledInArea = Math.max(0, scrollTop - areaTop);
+      const progress = areaHeight > 0 ? Math.min(1, Math.max(0, scrolledInArea / (areaHeight - 400))) : 0;
+      toolbar.style.setProperty('--section-progress', String(progress.toFixed(4)));
+    };
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(sync);
+    };
+
+    sync();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, []);
+
+  return toolbarRef;
+}
+
 export function useFeedReveal(deps: unknown[]) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
@@ -185,12 +466,12 @@ export function useFeedReveal(deps: unknown[]) {
           }
         }
       },
-      { rootMargin: '0px 0px -16px 0px', threshold: 0.06 },
+      { rootMargin: '0px 0px -40px 0px', threshold: 0.08 },
     );
 
     for (const card of cards) {
       const rect = card.getBoundingClientRect();
-      if (rect.top < viewportH * 0.96) {
+      if (rect.top < viewportH * 0.92) {
         card.dataset.visible = 'true';
       } else {
         card.dataset.visible = 'false';

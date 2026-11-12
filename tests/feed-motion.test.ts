@@ -3,9 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   EditorialSignalMark,
+  KineticHeadline,
+  NewsTicker,
   computeReadingProgress,
   computeStaggerDelay,
   measureTabIndicator,
+  tokenizeKineticText,
 } from '../app/components/FeedMotion';
 
 describe('homepage editorial motion module', () => {
@@ -53,5 +56,60 @@ describe('homepage editorial motion module', () => {
     );
     expect(emptyHtml).toContain('data-variant="empty"');
     expect(emptyHtml).toContain('data-mode="rest"');
+  });
+
+  it('renders KineticHeadline with accessible aria-label and heading semantics', () => {
+    const html = renderToStaticMarkup(
+      createElement(KineticHeadline, { text: '把时间，留给值得的内容。', scrambleKeyword: 'RELAX' }),
+    );
+    expect(html).toContain('<h1');
+    expect(html).toContain('aria-label="把时间，留给值得的内容。"');
+    expect(html).toContain('kinetic-headline');
+    expect(html).toContain('RELAX');
+  });
+
+  it('wraps words in .kinetic-word containers with real breakable spaces and natural CJK segmentation', () => {
+    const enHtml = renderToStaticMarkup(
+      createElement(KineticHeadline, { text: 'Make time for what matters.', scrambleKeyword: 'RELAX' }),
+    );
+    expect(enHtml).toContain('aria-label="Make time for what matters."');
+    expect(enHtml).toContain('class="kinetic-chars-wrapper" aria-hidden="true"');
+    const wordMatches = enHtml.match(/class="kinetic-word"/g) || [];
+    expect(wordMatches.length).toBe(5);
+    expect(enHtml).toContain('</span> <span class="kinetic-word"');
+    expect(enHtml).not.toContain('\u00A0');
+    expect(enHtml).not.toContain('&nbsp;');
+
+    const enTokens = tokenizeKineticText('Make time for what matters.');
+    expect(enTokens.filter(t => t.type === 'word').map(t => t.text)).toEqual([
+      'Make',
+      'time',
+      'for',
+      'what',
+      'matters.',
+    ]);
+
+    const zhTokens = tokenizeKineticText('把时间，留给值得的内容。');
+    expect(zhTokens.length).toBeGreaterThan(1);
+    for (const token of zhTokens) {
+      expect(token.chars.length).toBeLessThanOrEqual(8);
+    }
+    expect(zhTokens.map(t => t.text)).toContain('间，');
+    expect(zhTokens.map(t => t.text)).toContain('容。');
+  });
+
+  it('renders NewsTicker with role region and duplicate tracks for seamless marquee', () => {
+    const items = [
+      { id: '1', title: 'Local-first sync workflows', category: 'NEWS' },
+      { id: '2', title: 'Practical AI evaluation', category: 'AI' },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(NewsTicker, { items, title: 'DISPATCH' }),
+    );
+    expect(html).toContain('role="region"');
+    expect(html).toContain('DISPATCH');
+    expect(html).toContain('Local-first sync workflows');
+    expect(html).toContain('Practical AI evaluation');
+    expect(html).toContain('ticker-track');
   });
 });
