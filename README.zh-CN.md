@@ -27,7 +27,7 @@
 - 视频、阅读、新闻、帖子、项目混合推荐，支持筛选、稍后看、喜欢、足迹和来源反馈。
 - 简体中文、繁體中文（台灣）、English、Tiếng Việt 四种界面语言，个人引导与三种可编辑起点：IT 与 AI 实践、开发与创作、通识探索。
 - 支持 RSS、公开 GitHub Stars、使用个人 API Key 的 YouTube 元数据、尽力更新的 B 站接口及链接导入。
-- 可选 OpenAI、DeepSeek、GLM 和兼容 HTTPS 接口。明确选择服务商与模型，以每日数量、预算预留和分析缓存限制使用，不会自动切换服务商产生费用。
+- 可选 OpenAI、DeepSeek、GLM、Google AI Studio (Gemini)、Groq、NVIDIA NIM、Cerebras 和兼容 HTTPS 接口。明确选择服务商与模型，以每日数量、预算预留和分析缓存限制使用，不会自动切换服务商产生费用。
 - 独立部署仅本人登录，API Key 在服务端加密；保留可选 ChatGPT Sites 适配层。
 - 域名向导检查公开 DNS、HTTPS 和当前实例，不收集 Cloudflare 管理令牌，不自动修改登录主地址。
 

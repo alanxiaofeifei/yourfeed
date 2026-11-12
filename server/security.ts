@@ -1,4 +1,5 @@
 import type { Provider } from '../shared/types';
+import { PROVIDERS } from '../shared/providers';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -25,8 +26,8 @@ export async function readJson(request: Request): Promise<Record<string, unknown
   } catch { throw new HttpError(400, '请求不是有效的 JSON 对象。'); }
 }
 export function providerName(value: unknown): Provider {
-  if (value !== 'openai' && value !== 'deepseek' && value !== 'glm' && value !== 'custom') throw new HttpError(400, '请选择支持的模型服务商。');
-  return value;
+  if (typeof value !== 'string' || !PROVIDERS.includes(value as Provider)) throw new HttpError(400, '请选择支持的模型服务商。');
+  return value as Provider;
 }
 function decodeMaster(master: string): Uint8Array {
   if (/^[a-f0-9]{64}$/i.test(master)) return Uint8Array.from(master.match(/../g)!, x => parseInt(x,16));

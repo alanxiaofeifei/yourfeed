@@ -2,6 +2,7 @@ import {languageName} from '../shared/language';
 import {honestContent} from '../shared/content-coverage';
 import { z } from 'zod';
 import type { Analysis, ContentItem, Provider, ProviderConfig, Topic } from '../shared/types';
+import { PROVIDERS, PRESET_BASE_URLS } from '../shared/providers';
 import { getConfig, getProviderKey, getAnalysisCache, saveAnalysisCache, listContent, listSources, readFeedback, upsertContent, reserveUsage, settleUsage, usagePeriod, type Env } from './db';
 import { HttpError } from './security';
 import { rankFeed } from './ranking';
@@ -24,13 +25,31 @@ export const MODEL_PRICES: Record<Provider, Record<string, { input: number; outp
   // Use peak, uncached pricing when reserving; cheaper hours/caching are not assumed.
   deepseek: { 'deepseek-flash': { input: 0.3, output: 1.2 }, 'deepseek-v4-pro': { input: 1.32, output: 3.96 } },
   glm: { 'glm-5.3': { input: 8 / 6, output: 28 / 6 }, 'glm-5.3-flash': { input: 0.8 / 6, output: 2.8 / 6 }, 'glm-5.3-flashx': { input: 2 / 6, output: 7 / 6 } },
+  gemini: {
+    'gemini-3.8-flash': { input: 0.75, output: 3.75 },
+    'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
+    'gemini-3.1-flash-lite': { input: 0.30, output: 2.50 },
+  },
+  groq: {
+    'openai/gpt-oss-120b': { input: 0.15, output: 0.60 },
+    'openai/gpt-oss-20b': { input: 0.075, output: 0.30 },
+    'qwen/qwen3.8-27b': { input: 0.80, output: 4.00 },
+  },
+  // free developer endpoints
+  nvidia: {
+    'deepseek-ai/deepseek-v4-flash': { input: 0, output: 0 },
+    'nvidia/nemotron-3-super-120b-a12b': { input: 0, output: 0 },
+    'openai/gpt-oss-120b': { input: 0, output: 0 },
+    'z-ai/glm-5.3': { input: 0, output: 0 },
+  },
+  // free trial; paid rates not assumed
+  cerebras: {
+    'gpt-oss-120b': { input: 0, output: 0 },
+    'qwen-3.8-27b': { input: 0, output: 0 },
+  },
   custom: {},
 };
-const BASE_URLS: Record<Exclude<Provider,'custom'>, string> = {
-  openai: 'https://api.openai.com/v1',
-  deepseek: 'https://api.deepseek.com',
-  glm: 'https://open.bigmodel.cn/api/paas/v4',
-};
+const BASE_URLS: Record<Exclude<Provider,'custom'>, string> = PRESET_BASE_URLS;
 const TOPICS = ['ai', 'automation', 'network', 'linux', 'it', 'code', 'making', 'cooking', 'science', 'humanities', 'english', 'tools'] as const;
 const MAX_OUTPUT = 2048;
 const MAX_SOURCE_CHARS = 18_000;
@@ -96,7 +115,7 @@ function outputLimit(config:ProviderConfig,test=false):number {
   return value;
 }
 function configIdentity(config:ProviderConfig):string {
-  return JSON.stringify(['provider-v2',config.provider,config.model,config.provider==='custom'?validateProviderBaseUrl(config.baseUrl||''):BASE_URLS[config.provider],protocolFor(config),config.temperature??null,config.maxOutputTokens??MAX_OUTPUT,config.timeoutSeconds??25,config.responseFormat||(config.provider==='openai'?'json_schema':'json_object'),config.reasoningEffort??(config.provider==='openai'?'low':null)]);
+  return JSON.stringify(['provider-v2',config.provider,config.model,config.provider==='custom'?validateProviderBaseUrl(config.baseUrl||''):BASE_URLS[config.provider],protocolFor(config),config.temperature??null,config.maxOutputTokens??MAX_OUTPUT,config.timeoutSeconds??25,config.responseFormat||(config.provider==='openai'||config.provider==='gemini'?'json_schema':config.provider==='nvidia'?'none':'json_object'),config.reasoningEffort??(config.provider==='openai'?'low':null)]);
 }
 function validateRuntimeConfig(config:ProviderConfig):void {
   if(typeof config.model!=='string'||!config.model.trim()||config.model.trim().length>120||/[\u0000-\u001f\u007f]/.test(config.model))throw new HttpError(400,'请填写有效的模型名称。');
@@ -137,7 +156,7 @@ export async function callModel(config: ProviderConfig, key: string, prompt: str
   const endpoint=config.provider==='custom'?await resolveProviderEndpoint(config.baseUrl||'',protocol):buildProviderEndpoint(BASE_URLS[config.provider],protocol);
   const outputSchema = task?.schema || { type: 'object', additionalProperties: false, properties: { bullets: { type: 'array', items: {type:'string'}, minItems:1, maxItems:3 }, relevance: {type:'string'}, topics: {type:'array', items:{type:'string', enum:TOPICS}}, references:{type:'array',items:{type:'string'}} }, required: ['bullets','relevance','topics','references'] };
   const instructions=test?'Reply with OK.':task?.instructions||buildSystemPrompt(profile);const schemaName=task?.schemaName||'yourfeed_analysis';
-  const format=config.responseFormat || (config.provider==='openai'?'json_schema':'json_object');
+  const format=config.responseFormat || (config.provider==='openai'||config.provider==='gemini'?'json_schema':config.provider==='nvidia'?'none':'json_object');
   if(!['json_schema','json_object','none'].includes(format))throw new HttpError(400,'输出格式无效。');
   const reasoning=reasoningFor(config);
   let body: Record<string, unknown>;
@@ -170,14 +189,14 @@ export async function callModel(config: ProviderConfig, key: string, prompt: str
 export async function probeProviderModels(config:ProviderConfig,key:string):Promise<ModelProbe> {
   try{
     const endpoint=config.provider==='custom'?await resolveProviderEndpoint(config.baseUrl||'',protocolFor(config)):buildProviderEndpoint(BASE_URLS[config.provider],protocolFor(config));
-    const url=endpoint.replace(/\/(?:responses|chat\/completions)$/,'')+'/models';
+    const url=endpoint.replace(/\/(?:responses|chat\/completions)\/?$/,'')+'/models';
     let response:Response;
     try{response=await fetch(url,{method:'GET',headers:{Accept:'application/json',Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(8000),redirect:'manual'});}catch(error){throw transportFailure(error,config.provider);}
     const info=responseDiagnostic(response,config.provider,key);let data:any;
     try{data=await readProviderJson(response,config.provider,key,MAX_RESPONSE_BYTES);}catch(error){if(!response.ok)throw httpFailure(response,undefined,config.provider,key);throw error;}
     if(!response.ok||data.error)throw httpFailure(response,data,config.provider,key);
     const models=Array.isArray(data.data)?data.data:Array.isArray(data.models)?data.models:undefined;
-    return {reachable:true,status:response.status,modelListed:models?models.some((entry:any)=>entry&&typeof entry==='object'&&entry.id===config.model):null,...(info.requestId?{requestId:info.requestId}:{})};
+    return {reachable:true,status:response.status,modelListed:models?models.some((entry:any)=>entry&&typeof entry==='object'&&(entry.id===config.model||entry.id==='models/'+config.model||entry.name===config.model||entry.name==='models/'+config.model)):null,...(info.requestId?{requestId:info.requestId}:{})};
   }catch(error){
     const diagnostic=error instanceof ProviderFailure?error.diagnostic:undefined;
     return {reachable:diagnostic?.upstreamStatus!==undefined,...(diagnostic?{code:diagnostic.code}:{}),...(diagnostic?.upstreamStatus!==undefined?{status:diagnostic.upstreamStatus}:{}),...(diagnostic?.requestId?{requestId:diagnostic.requestId}:{})};
@@ -390,7 +409,7 @@ export async function analyzePending(env: Env, limit = 3, userId?: string): Prom
 export async function testProvider(env: Env, overrideConfig?: Partial<ProviderConfig>): Promise<{ok:true;provider:Provider;model:string;message:string}> {
   // Draft connection tests may change credentials/model, never the saved spending limits.
   const saved=await getConfig(env);const provider=overrideConfig?.provider??saved.provider;
-  if (!['openai','deepseek','glm','custom'].includes(provider)) throw new HttpError(400,'服务商无效。');
+  if (!PROVIDERS.includes(provider)) throw new HttpError(400,'服务商无效。');
   const profile=await getConfig(env,provider);const config={...profile,provider};
   const fields=['model','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion','providerName'] as const;
   for(const field of fields)if(overrideConfig&&Object.hasOwn(overrideConfig,field)){

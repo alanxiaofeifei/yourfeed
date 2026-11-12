@@ -19,7 +19,7 @@ The executable source and examples live in `hosting/`:
 - Tenant: `AUTH_MODE=standalone`, `HOSTING_MODE=hosted`, unique `INSTANCE_ID`, unique `HOSTED_INSTANCE_TOKEN`, and the `HOSTED_CONTROL_SERVICE` service binding.
 - The tenant DB must have its own matching `meta` marker `hosted:instance`; missing/mismatched policy or marker fails closed. This is not a migration that assigns an existing private DB to a new person.
 
-Do not copy the operator's `OPENAI_API_KEY`, DeepSeek, GLM, YouTube credentials, `AUTH_SECRET` or encryption master key to tenant instances. Hosted users supply their own provider keys in private settings. Google OAuth and Resend may be shared **login/sending services**, but user sessions and content stay local to each instance. Notebook authorization is separate from Google sign-in.
+Do not copy the operator's `OPENAI_API_KEY`, DeepSeek, GLM, Gemini, Groq, NVIDIA, Cerebras, YouTube credentials, `AUTH_SECRET` or encryption master key to tenant instances. Hosted users supply their own provider keys in private settings. Google OAuth and Resend may be shared **login/sending services**, but user sessions and content stay local to each instance. Notebook authorization is separate from Google sign-in.
 
 ## Provisioning and invitation sequence
 
