@@ -9,7 +9,7 @@ A private home for videos, articles, news, saved posts and open-source projects.
 
 **Chinese · 55 seconds · v1.** A short illustrated introduction, not a recording of the current UI or a first-time setup guide. Demo stories and sources are fictional; provider free tiers and availability are subject to their policies.
 
-[![Watch the YourFeed introduction](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg)](https://alanzhu.dev/#yourfeed-video)
+<a href="https://alanzhu.dev/#yourfeed-video"><img src="https://alanzhu.dev/assets/yourfeed-intro-zh-v1.jpg" width="320" alt="Watch YourFeed introduction (Chinese, 55 seconds)"></a>
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
