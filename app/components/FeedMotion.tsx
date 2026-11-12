@@ -90,6 +90,147 @@ export function EditorialSignalMark({
   );
 }
 
+const SCRAMBLE_CHARS = '0123456789ABCDEF!@#$%&*?_~';
+
+export function KineticHeadline({
+  text,
+  scrambleKeyword,
+  className = '',
+  as = 'h1',
+}: {
+  text: string;
+  scrambleKeyword?: string;
+  className?: string;
+  as?: 'h1' | 'h2';
+}) {
+  const reducedMotion = useReducedMotion();
+  const [scrambled, setScrambled] = useState(scrambleKeyword || '');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    if (!scrambleKeyword || reducedMotion) return;
+
+    let iteration = 0;
+    const target = scrambleKeyword;
+    const maxIterations = target.length * 3;
+    const interval = setInterval(() => {
+      setScrambled(
+        target
+          .split('')
+          .map((char, index) => {
+            if (char === ' ') return ' ';
+            if (index < iteration / 3) return target[index];
+            return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+          })
+          .join(''),
+      );
+      iteration++;
+      if (iteration >= maxIterations) {
+        setScrambled(target);
+        clearInterval(interval);
+      }
+    }, 45);
+
+    return () => clearInterval(interval);
+  }, [scrambleKeyword, reducedMotion]);
+
+  const Tag = as;
+
+  if (reducedMotion || !mounted) {
+    return (
+      <Tag className={`kinetic-headline ${className}`.trim()} aria-label={text}>
+        {text}
+        {scrambleKeyword && <span className="kinetic-scramble-tag"> [{scrambleKeyword}]</span>}
+      </Tag>
+    );
+  }
+
+  // Split text into characters for kinetic typographic entrance
+  const chars = Array.from(text);
+
+  return (
+    <Tag className={`kinetic-headline ${className}`.trim()} aria-label={text}>
+      <span className="kinetic-chars-wrapper" aria-hidden="true">
+        {chars.map((char, index) => (
+          <span
+            key={`${index}-${char}`}
+            className="kinetic-char"
+            style={{
+              '--char-index': index,
+              animationDelay: `${index * 38}ms`,
+            } as React.CSSProperties}
+          >
+            {char === ' ' ? '\u00A0' : char}
+          </span>
+        ))}
+      </span>
+      {scrambleKeyword && (
+        <span className="kinetic-scramble-badge" aria-hidden="true">
+          <span className="scramble-dot" />
+          <span className="scramble-code">{scrambled}</span>
+        </span>
+      )}
+    </Tag>
+  );
+}
+
+export interface NewsTickerItem {
+  id: string;
+  title: string;
+  category?: string;
+  url?: string;
+}
+
+export function NewsTicker({
+  items,
+  title = 'DISPATCH',
+  className = '',
+  onSelect,
+}: {
+  items: NewsTickerItem[];
+  title?: string;
+  className?: string;
+  onSelect?: (item: NewsTickerItem) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  if (!items || items.length === 0) return null;
+
+  // Duplicate items to make seamless continuous loop
+  const displayItems = [...items, ...items];
+
+  return (
+    <div
+      className={`editorial-ticker ${className}`.trim()}
+      role="region"
+      aria-label="Breaking news ticker"
+    >
+      <div className="ticker-badge">
+        <span className="ticker-pulse" />
+        <span className="ticker-title">{title}</span>
+      </div>
+      <div className="ticker-viewport">
+        <div className={`ticker-track ${reducedMotion ? 'reduced' : ''}`}>
+          {displayItems.map((item, index) => (
+            <button
+              key={`${item.id}-${index}`}
+              className="ticker-item"
+              onClick={() => onSelect?.(item)}
+              type="button"
+            >
+              {item.category && <span className="ticker-item-category">{item.category}</span>}
+              <span className="ticker-item-title">{item.title}</span>
+              <span className="ticker-divider" aria-hidden="true">
+                ✦
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function useGlidingTabs<T extends string>(activeKey: T, extraDeps: unknown[] = []) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -160,6 +301,46 @@ export function useEditorialScroll(modalActive = false) {
   return topbarRef;
 }
 
+export function useStickyToolbarProgress() {
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      const doc = document.documentElement;
+      const scrollTop = window.scrollY || doc.scrollTop || 0;
+      const mainArea = document.querySelector('.main-area') as HTMLElement | null;
+      if (!mainArea) return;
+      const areaRect = mainArea.getBoundingClientRect();
+      const areaTop = scrollTop + areaRect.top;
+      const areaHeight = mainArea.offsetHeight;
+      const scrolledInArea = Math.max(0, scrollTop - areaTop);
+      const progress = areaHeight > 0 ? Math.min(1, Math.max(0, scrolledInArea / (areaHeight - 400))) : 0;
+      toolbar.style.setProperty('--section-progress', String(progress.toFixed(4)));
+    };
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(sync);
+    };
+
+    sync();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, []);
+
+  return toolbarRef;
+}
+
 export function useFeedReveal(deps: unknown[]) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
@@ -185,12 +366,12 @@ export function useFeedReveal(deps: unknown[]) {
           }
         }
       },
-      { rootMargin: '0px 0px -16px 0px', threshold: 0.06 },
+      { rootMargin: '0px 0px -40px 0px', threshold: 0.08 },
     );
 
     for (const card of cards) {
       const rect = card.getBoundingClientRect();
-      if (rect.top < viewportH * 0.96) {
+      if (rect.top < viewportH * 0.92) {
         card.dataset.visible = 'true';
       } else {
         card.dataset.visible = 'false';

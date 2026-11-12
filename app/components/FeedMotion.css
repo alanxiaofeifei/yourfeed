@@ -1,11 +1,12 @@
-/* Shared Editorial Motion System for YourFeed & AlanFeed */
+/* Shared Editorial Motion System v2 for YourFeed & AlanFeed (News-Site Style) */
 :root {
-  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-ease-subtle: cubic-bezier(0.33, 1, 0.68, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --motion-ease-subtle: cubic-bezier(0.25, 1, 0.5, 1);
   --motion-fast: 180ms;
-  --motion-base: 320ms;
-  --motion-slow: 520ms;
+  --motion-base: 360ms;
+  --motion-slow: 750ms;
+  --motion-hero: 1200ms;
 }
 
 /* 1. Topbar Scroll Condensation & Reading Progress Hairline */
@@ -14,8 +15,8 @@
   top: 0;
   z-index: 30;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   transition:
     height var(--motion-base) var(--motion-ease-out),
     background-color var(--motion-base) var(--motion-ease-out),
@@ -25,12 +26,12 @@
 
 .topbar[data-scrolled='true'] {
   height: 64px;
-  background: color-mix(in srgb, var(--bg) 94%, var(--surface));
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  background: color-mix(in srgb, var(--bg) 95%, var(--surface));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
 }
 
 :root[data-theme='light'] .topbar[data-scrolled='true'] {
-  box-shadow: 0 6px 22px rgba(62, 82, 51, 0.06);
+  box-shadow: 0 8px 26px rgba(62, 82, 51, 0.08);
 }
 
 .topbar::after {
@@ -39,12 +40,12 @@
   left: 0;
   bottom: -1px;
   width: 100%;
-  height: 1.5px;
+  height: 2px;
   background: linear-gradient(90deg, var(--amber), var(--green));
   transform-origin: left center;
   transform: scaleX(var(--reading-progress, 0));
-  opacity: 0.78;
-  transition: transform 120ms linear, opacity var(--motion-fast) ease;
+  opacity: 0.9;
+  transition: transform 100ms linear, opacity var(--motion-fast) ease;
   pointer-events: none;
 }
 
@@ -52,44 +53,51 @@
   opacity: 0;
 }
 
-/* 2. Masthead Eyebrow, Editorial Hairline & Hero Transition */
+/* 2. Masthead Eyebrow & Rule Growth */
 .welcome-eyebrow {
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .amber-dash {
   transform-origin: left center;
-  animation: editorialRuleExpand 620ms var(--motion-ease-out) both;
+  animation: editorialRuleExpand 800ms var(--motion-ease-out) both;
 }
 
 .editorial-edition-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   margin-left: auto;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--line));
-  background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, var(--line));
+  background: color-mix(in srgb, var(--amber) 10%, var(--surface));
   color: var(--amber);
-  font-size: 8px;
-  letter-spacing: 1.3px;
-  font-weight: 600;
+  font-size: 8.5px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  animation: editionPillIn 600ms var(--motion-ease-out) 150ms both;
 }
 
 .editorial-edition-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 22%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 30%, transparent);
+  animation: pulseDot 2s ease-in-out infinite;
 }
 
+/* 3. Hero Wow Moment & Kinetic Headline */
 .hero-heading {
-  padding-bottom: 22px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, var(--amber) 18%);
+  padding-bottom: 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, var(--amber) 20%);
   position: relative;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
 }
 
 .hero-heading::after {
@@ -97,18 +105,73 @@
   position: absolute;
   left: 0;
   bottom: -1px;
-  width: 84px;
-  height: 1.5px;
+  width: 140px;
+  height: 2.5px;
   background: linear-gradient(90deg, var(--amber), transparent);
   transform-origin: left center;
-  animation: editorialRuleExpand 720ms var(--motion-ease-out) 80ms both;
+  animation: editorialRuleExpand 950ms var(--motion-ease-out) 100ms both;
 }
 
 .hero-copy-stage {
-  animation: editorialStageIn 380ms var(--motion-ease-out) both;
+  animation: editorialHeroStageIn var(--motion-hero) var(--motion-ease-out) both;
 }
 
-/* 3. MotionHarness Editorial Signal Mark (Hero & Empty State) */
+.kinetic-headline {
+  display: inline-block;
+  margin: 0;
+  position: relative;
+}
+
+.kinetic-chars-wrapper {
+  display: inline;
+}
+
+.kinetic-char {
+  display: inline-block;
+  opacity: 0;
+  transform: translate3d(0, 70px, 0) scale(0.85);
+  filter: blur(8px);
+  animation: kineticCharFlyIn 1100ms var(--motion-ease-out) forwards;
+  will-change: transform, opacity, filter;
+}
+
+.kinetic-scramble-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  vertical-align: middle;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--amber);
+  animation: scrambleBadgeIn 700ms var(--motion-ease-out) 300ms both;
+}
+
+.kinetic-scramble-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8em;
+  color: var(--amber);
+  margin-left: 6px;
+}
+
+.scramble-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+.scramble-code {
+  letter-spacing: 1px;
+}
+
+/* 4. MotionHarness Editorial Signal Mark (Enhanced Hero WOW) */
 .editorial-signal-mark {
   position: relative;
   display: inline-flex;
@@ -119,14 +182,15 @@
 }
 
 .editorial-signal-hero {
-  width: 54px;
-  height: 54px;
-  margin-right: 2px;
+  width: 60px;
+  height: 60px;
+  margin-right: 4px;
+  animation: signalMarkPop 1200ms var(--motion-ease-out) both;
 }
 
 .editorial-signal-empty {
-  width: 64px;
-  height: 64px;
+  width: 70px;
+  height: 70px;
 }
 
 .editorial-signal-clip {
@@ -137,7 +201,7 @@
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  transition: transform var(--motion-base) var(--motion-ease-out), opacity var(--motion-base) ease;
+  transition: transform var(--motion-base) var(--motion-ease-out), filter var(--motion-base) ease;
 }
 
 :root[data-theme='light'] .editorial-signal-clip {
@@ -145,11 +209,11 @@
 }
 
 .editorial-signal-mark[data-mode='grow'] .editorial-signal-clip {
-  transform: rotate(30deg) scale(1.03);
+  transform: rotate(35deg) scale(1.05);
 }
 
 .editorial-signal-mark.is-syncing .editorial-signal-clip {
-  filter: brightness(1.12);
+  animation: signalRotateSync 2.4s linear infinite;
 }
 
 .editorial-signal-static {
@@ -163,15 +227,15 @@
 }
 
 .signal-ring-outer {
-  stroke: color-mix(in srgb, var(--amber) 34%, var(--line));
+  stroke: color-mix(in srgb, var(--amber) 40%, var(--line));
 }
 
 .signal-ring-inner {
-  stroke: color-mix(in srgb, var(--green) 36%, var(--line));
+  stroke: color-mix(in srgb, var(--green) 40%, var(--line));
 }
 
 .signal-ticks {
-  stroke: color-mix(in srgb, var(--amber) 62%, var(--muted));
+  stroke: color-mix(in srgb, var(--amber) 65%, var(--muted));
 }
 
 .signal-arc {
@@ -190,7 +254,122 @@
   fill: var(--amber);
 }
 
-/* 4. Mode Switch Gliding Pill & Update Controls */
+/* 5. News-Site Style Breaking Marquee Ticker */
+.editorial-ticker {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  margin: 18px 0 22px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line));
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  position: relative;
+  animation: tickerSlideIn 850ms var(--motion-ease-out) 200ms both;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.ticker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  height: 100%;
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
+  border-right: 1px solid color-mix(in srgb, var(--amber) 32%, var(--line));
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.ticker-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e54d2e;
+  box-shadow: 0 0 0 2px rgba(229, 77, 46, 0.3);
+  animation: pulseTicker 1.5s infinite;
+}
+
+.ticker-title {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+
+.ticker-viewport {
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-track {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  width: max-content;
+  will-change: transform;
+  animation: tickerMarquee 36s linear infinite;
+}
+
+.ticker-viewport:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+.ticker-track.reduced {
+  animation: none;
+  overflow-x: auto;
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--motion-fast) ease;
+}
+
+.ticker-item:hover,
+.ticker-item:focus {
+  color: var(--amber);
+  outline: none;
+}
+
+.ticker-item-category {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  background: color-mix(in srgb, var(--amber) 18%, var(--surface));
+  color: var(--amber);
+}
+
+.ticker-item-title {
+  font-weight: 500;
+}
+
+.ticker-divider {
+  margin-left: 8px;
+  font-size: 7px;
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+/* 6. Mode Switch Gliding Pill & Controls */
 .mode-switch {
   position: relative;
   isolation: isolate;
@@ -212,11 +391,11 @@
 }
 
 .mode-switch button.selected svg {
-  transform: scale(1.08) rotate(-4deg);
+  transform: scale(1.12) rotate(-5deg);
 }
 
 .mode-switch button:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .shuffle-button {
@@ -232,21 +411,21 @@
 }
 
 .shuffle-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .shuffle-button:hover:not(:disabled) svg:not(.spin) {
-  transform: rotate(16deg) scale(1.06);
+  transform: rotate(20deg) scale(1.1);
 }
 
 .shuffle-button:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.96);
 }
 
-/* 5. Daily Briefing Editorial Cascade & Hover Signal Line */
+/* 7. Daily Briefing News-Room Cascade */
 .daily-briefing {
   position: relative;
-  animation: editorialStageIn 420ms var(--motion-ease-out) 40ms both;
+  animation: editorialStageIn 550ms var(--motion-ease-out) 100ms both;
   transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
@@ -256,14 +435,14 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--green) 65%, transparent), transparent);
-  opacity: 0.85;
+  height: 2.5px;
+  background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--green) 70%, transparent), transparent);
+  opacity: 0.9;
 }
 
 .daily-pick {
   position: relative;
-  animation: editorialPickIn 420ms var(--motion-ease-out) both;
+  animation: editorialPickIn 600ms var(--motion-ease-out) both;
   animation-delay: var(--pick-delay, 0ms);
   transition: background-color var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease-out);
 }
@@ -274,7 +453,7 @@
   left: -21px;
   top: 14px;
   bottom: 14px;
-  width: 2.5px;
+  width: 3px;
   border-radius: 0 2px 2px 0;
   background: var(--amber);
   transform: scaleY(0);
@@ -288,13 +467,14 @@
 }
 
 .daily-pick-number {
-  transition: opacity var(--motion-fast) ease, transform var(--motion-base) var(--motion-ease-out);
+  transition: opacity var(--motion-fast) ease, transform var(--motion-base) var(--motion-ease-out), color var(--motion-fast) ease;
 }
 
 .daily-pick:hover .daily-pick-number,
 .daily-pick:focus-within .daily-pick-number {
   opacity: 1;
-  transform: translateX(2px);
+  color: var(--amber);
+  transform: translateX(3px);
 }
 
 .daily-pick-open svg,
@@ -304,11 +484,38 @@
 
 .daily-pick-open:hover svg,
 .daily-briefing-all:hover svg {
-  transform: translate(2px, -2px);
+  transform: translate(3px, -3px);
   color: var(--amber);
 }
 
-/* 6. Gliding Kind Tabs Indicator & Search Focus Rule */
+/* 8. Sticky Feed Toolbar with Section Progress & Gliding Tabs */
+.feed-toolbar {
+  position: sticky;
+  top: 64px;
+  z-index: 22;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 8px 0;
+  margin: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  transition: background-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
+}
+
+.feed-toolbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--amber), var(--green));
+  transform-origin: left center;
+  transform: scaleX(var(--section-progress, 0));
+  transition: transform 90ms linear;
+  pointer-events: none;
+}
+
 .kind-tabs {
   position: relative;
 }
@@ -318,12 +525,13 @@
   position: absolute;
   bottom: 0;
   left: 0;
-  height: 2px;
+  height: 2.5px;
   width: var(--tab-indicator-w, 0px);
   transform: translate3d(var(--tab-indicator-x, 0px), 0, 0);
   background: var(--amber);
   border-radius: 2px 2px 0 0;
   opacity: var(--tab-indicator-opacity, 0);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent);
   transition:
     transform var(--motion-base) var(--motion-ease-out),
     width var(--motion-base) var(--motion-ease-out),
@@ -336,7 +544,11 @@
 }
 
 .kind-tabs > button {
-  transition: color var(--motion-fast) ease;
+  transition: color var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.kind-tabs > button:hover {
+  transform: translateY(-1px);
 }
 
 .search-row {
@@ -353,8 +565,8 @@
 
 .search-row:focus-within {
   background: color-mix(in srgb, var(--surface) 85%, transparent);
-  border-color: color-mix(in srgb, var(--amber) 42%, var(--line));
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.09);
 }
 
 .search-row > svg:first-child {
@@ -363,36 +575,51 @@
 
 .search-row:focus-within > svg:first-child {
   color: var(--amber);
-  transform: scale(1.06);
+  transform: scale(1.08);
 }
 
-/* 7. Feed Stream Choreography, Card Editorial Top Rule & Micro-Interactions */
+/* 9. Feed Cards Large Translate/Scale + Clip Reveal + Parallax + 3D Hover Depth */
 .feed-grid {
-  transition: opacity 220ms var(--motion-ease-out), filter 220ms ease;
+  transition: opacity 240ms var(--motion-ease-out), filter 240ms ease;
+  perspective: 1200px;
 }
 
 .feed-grid[data-shuffling='true'] {
-  opacity: 0.58;
+  opacity: 0.5;
+  filter: blur(1px);
 }
 
 .content-card {
   position: relative;
-  animation: editorialCardIn 440ms var(--motion-ease-out) both;
+  animation: editorialCardInLarge 850ms var(--motion-ease-out) both;
   animation-delay: var(--card-delay, 0ms);
+  clip-path: inset(0 0 0 0);
   transition:
-    transform var(--motion-base) var(--motion-ease-out),
-    border-color var(--motion-base) var(--motion-ease-out),
-    box-shadow var(--motion-base) var(--motion-ease-out),
-    opacity var(--motion-base) var(--motion-ease-out);
+    transform 380ms var(--motion-ease-out),
+    border-color 300ms var(--motion-ease-out),
+    box-shadow 380ms var(--motion-ease-out),
+    opacity 400ms var(--motion-ease-out);
 }
 
+/* Scroll-linked reveal state driven by IntersectionObserver */
 .content-card[data-visible='false'] {
-  opacity: 0.01;
-  transform: translate3d(0, 12px, 0);
+  opacity: 0.001;
+  transform: translate3d(0, 80px, 0) scale(0.92);
+  clip-path: inset(18% 0 0 0);
 }
 
 .content-card[data-visible='true'] {
   opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  clip-path: inset(0 0 0 0);
+}
+
+/* Native CSS Scroll-Driven Animation when supported */
+@supports (animation-timeline: view()) {
+  .content-card {
+    animation-timeline: view();
+    animation-range: entry 0% entry 35%;
+  }
 }
 
 .content-card::before {
@@ -401,7 +628,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 2.5px;
   background: linear-gradient(90deg, var(--amber), var(--green));
   transform: scaleX(0);
   transform-origin: left center;
@@ -410,9 +637,60 @@
   pointer-events: none;
 }
 
-.content-card:hover::before,
-.content-card:focus-within::before {
-  transform: scaleX(1);
+/* 3D Depth & Hover Elevation on Desktop (pointer: fine) */
+@media (hover: hover) and (pointer: fine) {
+  .content-card:hover {
+    transform: translate3d(0, -8px, 14px) scale(1.015);
+    border-color: color-mix(in srgb, var(--amber) 48%, var(--line));
+    box-shadow:
+      0 20px 38px -12px rgba(0, 0, 0, 0.28),
+      0 0 0 1px color-mix(in srgb, var(--amber) 25%, transparent);
+  }
+
+  :root[data-theme='light'] .content-card:hover {
+    box-shadow:
+      0 20px 36px -12px rgba(62, 82, 51, 0.16),
+      0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent);
+  }
+
+  .content-card:hover::before,
+  .content-card:focus-within::before {
+    transform: scaleX(1);
+  }
+}
+
+/* Image Parallax Inside Cards */
+.video-cover,
+.card-content img {
+  overflow: hidden;
+  position: relative;
+}
+
+.video-cover img {
+  will-change: transform;
+  transform: scale(1.06);
+  transition: transform 600ms var(--motion-ease-out), filter 300ms ease;
+}
+
+.video-cover:hover img {
+  transform: scale(1.12);
+}
+
+@supports (animation-timeline: view()) {
+  .video-cover img {
+    animation: imageParallax linear both;
+    animation-timeline: view();
+    animation-range: entry -10% exit 110%;
+  }
+}
+
+@keyframes imageParallax {
+  from {
+    transform: scale(1.14) translate3d(0, -18px, 0);
+  }
+  to {
+    transform: scale(1.14) translate3d(0, 18px, 0);
+  }
 }
 
 .card-title h2 {
@@ -426,7 +704,7 @@
 
 .card-title:hover svg,
 .open-card-button:hover svg {
-  transform: translate(2px, -2px);
+  transform: translate(3px, -3px);
   color: var(--amber);
 }
 
@@ -437,19 +715,19 @@
 }
 
 .card-bottom > button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .card-bottom > button:active {
-  transform: scale(0.88);
+  transform: scale(0.86);
 }
 
 .card-bottom > button.liked svg,
 .card-bottom > button.is-saved svg {
-  animation: tactilePop 280ms var(--motion-ease-spring);
+  animation: tactilePop 320ms var(--motion-ease-spring);
 }
 
-/* 8. Sidebar Navigation & Right Column Intent Stage */
+/* 10. Sidebar Navigation */
 .primary-nav > button {
   position: relative;
   transition:
@@ -464,7 +742,7 @@
   left: 0;
   top: 10px;
   bottom: 10px;
-  width: 2.5px;
+  width: 3px;
   border-radius: 0 2px 2px 0;
   background: var(--amber);
   transform: scaleY(0);
@@ -484,6 +762,7 @@
 
 .intent-card:hover {
   border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+  transform: translateY(-2px);
 }
 
 .interest-tags > button {
@@ -495,28 +774,7 @@
 }
 
 .interest-tags > button:hover {
-  transform: translateY(-1px);
-}
-
-/* 9. Theme Toggle Sun/Moon Morph */
-.theme-toggle {
-  transition:
-    border-color var(--motion-fast) ease,
-    color var(--motion-fast) ease,
-    background-color var(--motion-fast) ease,
-    transform var(--motion-fast) var(--motion-ease-out);
-}
-
-.theme-toggle:active {
-  transform: scale(0.95);
-}
-
-.theme-toggle svg {
-  transition: transform var(--motion-base) var(--motion-ease-spring);
-}
-
-.theme-toggle:hover svg {
-  transform: rotate(18deg) scale(1.08);
+  transform: translateY(-2px);
 }
 
 /* Keyframes */
@@ -531,10 +789,125 @@
   }
 }
 
+@keyframes editionPillIn {
+  from {
+    opacity: 0;
+    transform: translate3d(24px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes pulseTicker {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.65;
+  }
+}
+
+@keyframes editorialHeroStageIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 30px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes kineticCharFlyIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 70px, 0) scale(0.85);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 0.9;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes scrambleBadgeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes signalMarkPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) rotate(-45deg);
+  }
+  60% {
+    transform: scale(1.08) rotate(10deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes signalRotateSync {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tickerSlideIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tickerMarquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
 @keyframes editorialStageIn {
   from {
     opacity: 0;
-    transform: translate3d(0, 6px, 0);
+    transform: translate3d(0, 25px, 0);
   }
   to {
     opacity: 1;
@@ -545,7 +918,7 @@
 @keyframes editorialPickIn {
   from {
     opacity: 0;
-    transform: translate3d(0, 7px, 0);
+    transform: translate3d(0, 35px, 0);
   }
   to {
     opacity: 1;
@@ -553,14 +926,16 @@
   }
 }
 
-@keyframes editorialCardIn {
-  from {
+@keyframes editorialCardInLarge {
+  0% {
     opacity: 0;
-    transform: translate3d(0, 10px, 0);
+    transform: translate3d(0, 80px, 0) scale(0.92);
+    clip-path: inset(18% 0 0 0);
   }
-  to {
+  100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) scale(1);
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -569,7 +944,7 @@
     transform: scale(0.82);
   }
   60% {
-    transform: scale(1.16);
+    transform: scale(1.22);
   }
   100% {
     transform: scale(1);
@@ -581,8 +956,8 @@
     height: 58px;
   }
   .editorial-signal-hero {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
   }
   .editorial-edition-pill {
     display: none;
@@ -590,17 +965,54 @@
   .daily-pick::before {
     left: -16px;
   }
+  .editorial-ticker {
+    height: 34px;
+    margin: 12px 0 16px;
+  }
+  .ticker-badge {
+    padding: 0 10px;
+  }
+  .ticker-item {
+    font-size: 11px;
+    padding: 0 10px;
+  }
 }
 
+/* Hard constraint: prefers-reduced-motion: reduce */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .editorial-signal-clip {
     display: none !important;
   }
   .editorial-signal-static {
     display: block !important;
   }
-  .content-card[data-visible='false'] {
+  .content-card[data-visible='false'],
+  .content-card[data-visible='true'],
+  .content-card {
     opacity: 1 !important;
     transform: none !important;
+    clip-path: none !important;
+    animation: none !important;
+  }
+  .kinetic-char {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+  }
+  .ticker-track {
+    animation: none !important;
+  }
+  .editorial-ticker {
+    animation: none !important;
   }
 }

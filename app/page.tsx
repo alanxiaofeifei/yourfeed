@@ -1,6 +1,6 @@
 'use client';
 import { branding } from '../data/branding';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ArrowRight, Bookmark, BookOpen, Check, CheckCheck, ChevronDown, ChevronRight, Clock3, Code2, Compass, ExternalLink, Eye, EyeOff, FileText, GitFork, Globe2, GraduationCap, Heart, History, House, KeyRound, Leaf, Link2, Loader2, Menu, MessageSquare, Newspaper, Plus, RefreshCw, Rss, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Shuffle, Trash2, Video, X, Zap } from 'lucide-react';
 import ThemeToggle from './components/ThemeToggle';
 import AccountMenu from './components/AccountMenu';
@@ -15,7 +15,17 @@ import StorageSettings from './components/StorageSettings';
 import ArchiveActions from './components/ArchiveActions';
 import BackgroundSettings from './components/BackgroundSettings';
 import ContentCoverage from './components/ContentCoverage';
-import { EditorialSignalMark, computeStaggerDelay, useEditorialScroll, useFeedReveal, useGlidingTabs } from './components/FeedMotion';
+import {
+  EditorialSignalMark,
+  KineticHeadline,
+  NewsTicker,
+  type NewsTickerItem,
+  computeStaggerDelay,
+  useEditorialScroll,
+  useFeedReveal,
+  useGlidingTabs,
+  useStickyToolbarProgress,
+} from './components/FeedMotion';
 import {cacheReadContent,readCachedContent} from '../shared/browser-cache';
 import { createProfile, type UserProfile } from '../shared/profile';
 import type { ContentItem, Feedback, FeedResponse, Kind, Mode, Provider, ProviderConfig, Source, Topic, Usage } from '../shared/types';
@@ -321,7 +331,24 @@ export default function Home() {
     const pageTitle = view === 'saved' ? t('留给下一次的好内容') : view === 'liked' ? t('那些让你停下来看的内容') : view === 'read' ? t('好奇心走过的地方') : mode === 'rest' ? t('把时间，留给值得的内容。') : t('让好奇，走向真正的能力。');
     const topbarRef = useEditorialScroll(!!selected || importing);
     const kindTabsRef = useGlidingTabs(kind, [language, view]);
+    const feedToolbarRef = useStickyToolbarProgress();
     const feedGridRef = useFeedReveal([items, view, mode, kind]);
+
+    const tickerItems: NewsTickerItem[] = useMemo(() => {
+      if (items && items.length > 0) {
+        return items.slice(0, 6).map(it => ({
+          id: it.id,
+          title: it.title,
+          category: kinds.find(k => k.id === it.kind)?.label ? t(kinds.find(k => k.id === it.kind)!.label) : it.platform.toUpperCase(),
+          url: it.url,
+        }));
+      }
+      const isZh = language.startsWith('zh');
+      return [
+        { id: 't1', title: isZh ? '探索跨领域好内容，保持专注与好奇' : 'Discover cross-domain reading, stay focused and curious', category: 'SIGNAL' },
+        { id: 't2', title: isZh ? '本地离线缓存支持，随时继续阅读' : 'Local cached reading ready whenever you return', category: 'LOCAL' },
+      ];
+    }, [items, kinds, language, t]);
     return <div className="app-shell">
     {mobileNav && <button className="nav-scrim" onClick={() => setMobileNav(false)} aria-label={t("\u5173\u95ED\u5BFC\u822A")}/>}
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
@@ -348,11 +375,12 @@ export default function Home() {
         ] as const).map(tab=>{const Icon=tab.icon;const active=settingsTab===tab.id;return <button key={tab.id} type="button" onClick={()=>setSettingsTab(tab.id)} className={active?'selected':''} aria-pressed={active}><span className="settings-tab-top"><span className="settings-tab-icon"><Icon size={22} aria-hidden="true"/></span><span className={`settings-tab-state ${active?'current':''}`}>{active?<><Check size={12} aria-hidden="true"/>{t('当前','Current')}</>:<ChevronRight size={18} aria-hidden="true"/>}</span></span><span className="settings-tab-copy"><strong>{tab.label}</strong><span>{tab.description}</span></span></button>;})}</nav></div>{settingsTab === 'profile' ? <ProfileSettings profile={profile} onChange={setProfile} notify={notify} aiConfigured={!!settings.configured} onOpenAiSettings={() => { setSettingsTab('ai'); navigate('settings'); }} onUsageChange={() => void loadSidebar()}/> : settingsTab === 'ai' ? <SettingsPanel settings={settings} onChange={setSettings} usage={usage} notify={notify} reload={loadSidebar}/> : settingsTab==='storage' ? <><StorageSettings userId={sessionUserId} notify={notify}/><BackgroundSettings/></> : <DeploymentSettings />}</section> : view === 'sources' ? <SourceSettings sources={sources} syncing={syncing} syncText={syncText} onSync={() => void refresh(true)} onImport={() => setImporting(true)} reload={loadSidebar} notify={notify} aiConfigured={!!settings.configured} onOpenAiSettings={() => { setSettingsTab('ai'); navigate('settings'); }} importText={sourceImportText} onImportTextChange={setSourceImportText} chatText={sourceChatText} onChatTextChange={setSourceChatText}/> : <>
           <section className="main-column">
             <div className="welcome-eyebrow"><span className="amber-dash"/><span>{view === 'feed' ? 'CURATED FOR YOUR CURIOSITY' : 'A LITTLE COLLECTION OF YOU'}</span><span className="editorial-edition-pill"><span className="editorial-edition-dot"/>{mode === 'rest' ? 'EDITION · RELAXED' : 'EDITION · FOCUSED'}</span></div>
-            <div className="hero-heading"><div key={`${view}-${mode}`} className="hero-copy-stage"><h1>{t(pageTitle)}</h1><p>{view === 'feed' ? (mode === 'rest' ? t('从一个有趣的视频、一篇好文章开始。享受这段属于你的时间。') : t('从真实的问题出发，积累能带到下一阶段的知识与经验。')) : t('把有价值的发现留下来，随时回来接着看。')}</p></div><EditorialSignalMark variant="hero" mode={mode} syncing={syncing}/></div>
+            <div className="hero-heading"><div key={`${view}-${mode}`} className="hero-copy-stage"><KineticHeadline text={t(pageTitle)} scrambleKeyword={mode === 'rest' ? 'RELAX' : 'FOCUS'} /><p>{view === 'feed' ? (mode === 'rest' ? t('从一个有趣的视频、一篇好文章开始。享受这段属于你的时间。') : t('从真实的问题出发，积累能带到下一阶段的知识与经验。')) : t('把有价值的发现留下来，随时回来接着看。')}</p></div><EditorialSignalMark variant="hero" mode={mode} syncing={syncing}/></div>
+            <NewsTicker items={tickerItems} title={language.startsWith('zh') ? '快讯播报' : 'DISPATCH'} onSelect={(item) => { const found = items.find(x => x.id === item.id); if (found) openContent(found); }}/>
             <div className="discovery-controls"><div className="mode-switch" data-mode={mode}><button className={mode === 'rest' ? 'selected' : ''} onClick={() => setMode('rest')}><Leaf size={15}/>{t("\u4F11\u606F\u4E00\u4E0B")}</button><button className={mode === 'grow' ? 'selected' : ''} onClick={() => setMode('grow')}><GraduationCap size={16}/>{t("\u60F3\u5B66\u4E00\u70B9")}</button></div><div className="feed-update-actions">{view==='feed'&&<button type="button" className="shuffle-button" onClick={()=>void shuffleFeed()} disabled={loading||loadingMore||syncing||shuffling} title={t('从已缓存的内容中换一批，不更新来源、不调用 AI，也不改变已读或兴趣反馈。','Show another batch from cached items. No source updates, AI calls, or reading/preference changes.')} aria-busy={shuffling}>{shuffling?<Loader2 size={16} className="spin"/>:<Shuffle size={17}/>}<span>{shuffling?t('正在换一批…','Finding another batch…'):t('换一批','Another batch')}</span></button>}<button type="button" className={`refresh-button ${syncing ? 'spinning' : ''}`} onClick={() => void refresh(true)} disabled={syncing||shuffling}><RefreshCw size={14}/>{syncing?t('正在更新','Updating…'):t('更新来源','Update sources')}</button></div></div>
             {view === 'feed' && <DailyBriefing revision={briefingRevision} onOpen={openContent} onNews={() => { setKind('news'); setQuery(''); setSearch(''); }}/>}
             {view === 'feed' && !loading && !error && !items.length && !sources.length && <ProfileOnboarding profile={profile} onChange={setProfile} notify={notify} onSources={() => navigate('sources')} onSettings={() => { setSettingsTab('ai'); navigate('settings'); }}/>}
-            <div className="feed-toolbar"><div className="kind-tabs" ref={kindTabsRef} data-gliding="true">{kinds.map(({ id, label }) => <button key={id} data-tab-id={id} className={kind === id ? 'selected' : ''} onClick={() => setKind(id)}>{t(label)}</button>)}</div><button className="filter-button" onClick={() => document.getElementById('feed-search')?.focus()} aria-label={t("\u641C\u7D22\u5185\u5BB9")}><Search size={17}/></button></div>
+            <div className="feed-toolbar" ref={feedToolbarRef}><div className="kind-tabs" ref={kindTabsRef} data-gliding="true">{kinds.map(({ id, label }) => <button key={id} data-tab-id={id} className={kind === id ? 'selected' : ''} onClick={() => setKind(id)}>{t(label)}</button>)}</div><button className="filter-button" onClick={() => document.getElementById('feed-search')?.focus()} aria-label={t("\u641C\u7D22\u5185\u5BB9")}><Search size={17}/></button></div>
             <div className="search-row"><Search size={15}/><input id="feed-search" maxLength={200} placeholder={t("\u5728\u4F60\u7684\u5185\u5BB9\u82B1\u56ED\u91CC\u641C\u7D22\u2026")} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button className="icon-button" aria-label={t("\u6E05\u9664\u641C\u7D22")} onClick={() => setQuery('')}><X size={14}/></button>}<span className="result-count">{t(`${total} 条发现`)}</span></div>
             {(syncing || analysisProgress) && <div className="sync-line"><Loader2 className="spin" size={13}/><span>{syncing ? syncText : analysisProgress}</span><span className="sync-line-fill"/></div>}
             {error && <div className="error-box"><p>{t(error)}</p><button className="small-button" onClick={() => void loadFeed()}>{t("\u91CD\u65B0\u52A0\u8F7D")}</button></div>}
@@ -389,7 +417,7 @@ function ContentCard({ item, index, onOpen, onFeedback }: {
     const isVideo = item.kind === 'video';
     const [imageFailed, setImageFailed] = useState(false);
     const Icon = kinds.find(x => x.id === item.kind)?.icon || FileText;
-    const delay = computeStaggerDelay(index);
+    const delay = computeStaggerDelay(index, 7, 50);
     return <article className={`content-card card-${item.kind}`} data-visible="true" style={{ '--card-delay': delay, animationDelay: delay } as React.CSSProperties}>
     {isVideo && <button className={`video-cover ${!item.image || imageFailed ? 'no-image' : ''}`} onClick={onOpen} aria-label={t(`观看 ${item.title}`)}>{item.image && !imageFailed ? <img src={item.image} alt="" referrerPolicy="no-referrer" loading={index < 2 ? 'eager' : 'lazy'} onError={() => setImageFailed(true)}/> : <><div className="abstract-lines"/><Video size={36}/><span>{item.topics[0] ? topicNames[item.topics[0]] : t('视频发现')}</span></>}<span className="video-play">▶</span><span className="video-platform">{platformId(item.platform) === 'youtube' ? 'YOUTUBE' : platformId(item.platform) === 'bilibili' ? 'BILIBILI' : item.platform.toUpperCase()}</span>{item.duration && <span className="duration-badge">{duration(item.duration)}</span>}</button>}
     <div className="card-content"><div className="card-source"><SourceMark platform={item.platform}/><span>{item.sourceName}</span><span className="source-divider">·</span><span>{timeAgo(item.publishedAt, language)}</span>{!isVideo && <span className={`kind-badge kind-${item.kind}`}><Icon size={11}/>{t(kinds.find(x => x.id === item.kind)?.label || '')}</span>}</div>
