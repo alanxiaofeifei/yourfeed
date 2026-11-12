@@ -1,0 +1,606 @@
+/* Shared Editorial Motion System for YourFeed & AlanFeed */
+:root {
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-subtle: cubic-bezier(0.33, 1, 0.68, 1);
+  --motion-fast: 180ms;
+  --motion-base: 320ms;
+  --motion-slow: 520ms;
+}
+
+/* 1. Topbar Scroll Condensation & Reading Progress Hairline */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    height var(--motion-base) var(--motion-ease-out),
+    background-color var(--motion-base) var(--motion-ease-out),
+    border-color var(--motion-base) var(--motion-ease-out),
+    box-shadow var(--motion-base) var(--motion-ease-out);
+}
+
+.topbar[data-scrolled='true'] {
+  height: 64px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+
+:root[data-theme='light'] .topbar[data-scrolled='true'] {
+  box-shadow: 0 6px 22px rgba(62, 82, 51, 0.06);
+}
+
+.topbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 100%;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--amber), var(--green));
+  transform-origin: left center;
+  transform: scaleX(var(--reading-progress, 0));
+  opacity: 0.78;
+  transition: transform 120ms linear, opacity var(--motion-fast) ease;
+  pointer-events: none;
+}
+
+.topbar[data-scrolled='false']::after {
+  opacity: 0;
+}
+
+/* 2. Masthead Eyebrow, Editorial Hairline & Hero Transition */
+.welcome-eyebrow {
+  position: relative;
+  overflow: hidden;
+}
+
+.amber-dash {
+  transform-origin: left center;
+  animation: editorialRuleExpand 620ms var(--motion-ease-out) both;
+}
+
+.editorial-edition-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--line));
+  background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+  color: var(--amber);
+  font-size: 8px;
+  letter-spacing: 1.3px;
+  font-weight: 600;
+}
+
+.editorial-edition-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 22%, transparent);
+}
+
+.hero-heading {
+  padding-bottom: 22px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, var(--amber) 18%);
+  position: relative;
+}
+
+.hero-heading::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 84px;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--amber), transparent);
+  transform-origin: left center;
+  animation: editorialRuleExpand 720ms var(--motion-ease-out) 80ms both;
+}
+
+.hero-copy-stage {
+  animation: editorialStageIn 380ms var(--motion-ease-out) both;
+}
+
+/* 3. MotionHarness Editorial Signal Mark (Hero & Empty State) */
+.editorial-signal-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.editorial-signal-hero {
+  width: 54px;
+  height: 54px;
+  margin-right: 2px;
+}
+
+.editorial-signal-empty {
+  width: 64px;
+  height: 64px;
+}
+
+.editorial-signal-clip {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background-image: url('./editorial-signal-dark.webp');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform var(--motion-base) var(--motion-ease-out), opacity var(--motion-base) ease;
+}
+
+:root[data-theme='light'] .editorial-signal-clip {
+  background-image: url('./editorial-signal-light.webp');
+}
+
+.editorial-signal-mark[data-mode='grow'] .editorial-signal-clip {
+  transform: rotate(30deg) scale(1.03);
+}
+
+.editorial-signal-mark.is-syncing .editorial-signal-clip {
+  filter: brightness(1.12);
+}
+
+.editorial-signal-static {
+  display: none;
+  width: 100%;
+  height: 100%;
+}
+
+.editorial-signal-mark[data-reduced-motion='true'] .editorial-signal-static {
+  display: block;
+}
+
+.signal-ring-outer {
+  stroke: color-mix(in srgb, var(--amber) 34%, var(--line));
+}
+
+.signal-ring-inner {
+  stroke: color-mix(in srgb, var(--green) 36%, var(--line));
+}
+
+.signal-ticks {
+  stroke: color-mix(in srgb, var(--amber) 62%, var(--muted));
+}
+
+.signal-arc {
+  stroke: var(--amber);
+}
+
+.signal-bead {
+  fill: var(--green);
+}
+
+.signal-star line {
+  stroke: var(--amber);
+}
+
+.signal-star circle {
+  fill: var(--amber);
+}
+
+/* 4. Mode Switch Gliding Pill & Update Controls */
+.mode-switch {
+  position: relative;
+  isolation: isolate;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.mode-switch button {
+  position: relative;
+  z-index: 1;
+  transition:
+    color var(--motion-base) var(--motion-ease-out),
+    background-color var(--motion-base) var(--motion-ease-out),
+    transform var(--motion-fast) var(--motion-ease-out),
+    box-shadow var(--motion-base) var(--motion-ease-out);
+}
+
+.mode-switch button svg {
+  transition: transform var(--motion-base) var(--motion-ease-spring);
+}
+
+.mode-switch button.selected svg {
+  transform: scale(1.08) rotate(-4deg);
+}
+
+.mode-switch button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.shuffle-button {
+  transition:
+    transform var(--motion-fast) var(--motion-ease-out),
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-base) var(--motion-ease-out);
+}
+
+.shuffle-button svg {
+  transition: transform var(--motion-base) var(--motion-ease-spring);
+}
+
+.shuffle-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.shuffle-button:hover:not(:disabled) svg:not(.spin) {
+  transform: rotate(16deg) scale(1.06);
+}
+
+.shuffle-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 5. Daily Briefing Editorial Cascade & Hover Signal Line */
+.daily-briefing {
+  position: relative;
+  animation: editorialStageIn 420ms var(--motion-ease-out) 40ms both;
+  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
+}
+
+.daily-briefing::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--green) 65%, transparent), transparent);
+  opacity: 0.85;
+}
+
+.daily-pick {
+  position: relative;
+  animation: editorialPickIn 420ms var(--motion-ease-out) both;
+  animation-delay: var(--pick-delay, 0ms);
+  transition: background-color var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease-out);
+}
+
+.daily-pick::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 14px;
+  bottom: 14px;
+  width: 2.5px;
+  border-radius: 0 2px 2px 0;
+  background: var(--amber);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--motion-base) var(--motion-ease-out);
+}
+
+.daily-pick:hover::before,
+.daily-pick:focus-within::before {
+  transform: scaleY(1);
+}
+
+.daily-pick-number {
+  transition: opacity var(--motion-fast) ease, transform var(--motion-base) var(--motion-ease-out);
+}
+
+.daily-pick:hover .daily-pick-number,
+.daily-pick:focus-within .daily-pick-number {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+.daily-pick-open svg,
+.daily-briefing-all svg {
+  transition: transform var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) ease;
+}
+
+.daily-pick-open:hover svg,
+.daily-briefing-all:hover svg {
+  transform: translate(2px, -2px);
+  color: var(--amber);
+}
+
+/* 6. Gliding Kind Tabs Indicator & Search Focus Rule */
+.kind-tabs {
+  position: relative;
+}
+
+.kind-tabs[data-gliding='true']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: var(--tab-indicator-w, 0px);
+  transform: translate3d(var(--tab-indicator-x, 0px), 0, 0);
+  background: var(--amber);
+  border-radius: 2px 2px 0 0;
+  opacity: var(--tab-indicator-opacity, 0);
+  transition:
+    transform var(--motion-base) var(--motion-ease-out),
+    width var(--motion-base) var(--motion-ease-out),
+    opacity var(--motion-fast) ease;
+  pointer-events: none;
+}
+
+.kind-tabs[data-gliding='true'] > button.selected::after {
+  opacity: 0;
+}
+
+.kind-tabs > button {
+  transition: color var(--motion-fast) ease;
+}
+
+.search-row {
+  position: relative;
+  padding: 6px 10px;
+  margin: 11px -10px 20px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.search-row:focus-within {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-color: color-mix(in srgb, var(--amber) 42%, var(--line));
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.search-row > svg:first-child {
+  transition: color var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease-out);
+}
+
+.search-row:focus-within > svg:first-child {
+  color: var(--amber);
+  transform: scale(1.06);
+}
+
+/* 7. Feed Stream Choreography, Card Editorial Top Rule & Micro-Interactions */
+.feed-grid {
+  transition: opacity 220ms var(--motion-ease-out), filter 220ms ease;
+}
+
+.feed-grid[data-shuffling='true'] {
+  opacity: 0.58;
+}
+
+.content-card {
+  position: relative;
+  animation: editorialCardIn 440ms var(--motion-ease-out) both;
+  animation-delay: var(--card-delay, 0ms);
+  transition:
+    transform var(--motion-base) var(--motion-ease-out),
+    border-color var(--motion-base) var(--motion-ease-out),
+    box-shadow var(--motion-base) var(--motion-ease-out),
+    opacity var(--motion-base) var(--motion-ease-out);
+}
+
+.content-card[data-visible='false'] {
+  opacity: 0.01;
+  transform: translate3d(0, 12px, 0);
+}
+
+.content-card[data-visible='true'] {
+  opacity: 1;
+}
+
+.content-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--amber), var(--green));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--motion-base) var(--motion-ease-out);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.content-card:hover::before,
+.content-card:focus-within::before {
+  transform: scaleX(1);
+}
+
+.card-title h2 {
+  transition: color var(--motion-fast) ease;
+}
+
+.card-title svg,
+.open-card-button svg {
+  transition: transform var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) ease;
+}
+
+.card-title:hover svg,
+.open-card-button:hover svg {
+  transform: translate(2px, -2px);
+  color: var(--amber);
+}
+
+.card-bottom > button {
+  transition:
+    color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease-spring);
+}
+
+.card-bottom > button:hover {
+  transform: translateY(-1px);
+}
+
+.card-bottom > button:active {
+  transform: scale(0.88);
+}
+
+.card-bottom > button.liked svg,
+.card-bottom > button.is-saved svg {
+  animation: tactilePop 280ms var(--motion-ease-spring);
+}
+
+/* 8. Sidebar Navigation & Right Column Intent Stage */
+.primary-nav > button {
+  position: relative;
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease-out);
+}
+
+.primary-nav > button::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2.5px;
+  border-radius: 0 2px 2px 0;
+  background: var(--amber);
+  transform: scaleY(0);
+  transition: transform var(--motion-base) var(--motion-ease-out);
+}
+
+.primary-nav > button.active::before {
+  transform: scaleY(1);
+}
+
+.intent-card {
+  transition:
+    border-color var(--motion-base) var(--motion-ease-out),
+    box-shadow var(--motion-base) var(--motion-ease-out),
+    transform var(--motion-base) var(--motion-ease-out);
+}
+
+.intent-card:hover {
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+}
+
+.interest-tags > button {
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease-out);
+}
+
+.interest-tags > button:hover {
+  transform: translateY(-1px);
+}
+
+/* 9. Theme Toggle Sun/Moon Morph */
+.theme-toggle {
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease-out);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle svg {
+  transition: transform var(--motion-base) var(--motion-ease-spring);
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(18deg) scale(1.08);
+}
+
+/* Keyframes */
+@keyframes editorialRuleExpand {
+  from {
+    transform: scaleX(0);
+    opacity: 0.2;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes editorialStageIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes editorialPickIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 7px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes editorialCardIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tactilePop {
+  0% {
+    transform: scale(0.82);
+  }
+  60% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 650px) {
+  .topbar[data-scrolled='true'] {
+    height: 58px;
+  }
+  .editorial-signal-hero {
+    width: 44px;
+    height: 44px;
+  }
+  .editorial-edition-pill {
+    display: none;
+  }
+  .daily-pick::before {
+    left: -16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editorial-signal-clip {
+    display: none !important;
+  }
+  .editorial-signal-static {
+    display: block !important;
+  }
+  .content-card[data-visible='false'] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
