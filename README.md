@@ -13,7 +13,7 @@ A private home for videos, articles, news, saved posts and open-source projects.
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
-**Project / hosted entry:** [yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+**Project / hosted entry:** [yourfeed.alanzhu.dev](https://yourfeed.alanzhu.dev/)
 
 **How to sign in:** this address is not public registration or a shared demo account. The operator must provision and assign independent instances before invited users can sign in. Visitors without an invitation can see the [screenshots](#interface-preview) or deploy their own instance below. A self-hosted instance uses the `OWNER_EMAIL` configured by its owner. Existing deployed behavior is not evidence that the new hosted setup has passed production acceptance.
 

@@ -13,7 +13,7 @@
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
-**项目／托管入口：**[yourfeed.alan-xiaofei224.workers.dev](https://yourfeed.alan-xiaofei224.workers.dev)
+**项目／托管入口：**[yourfeed.alanzhu.dev](https://yourfeed.alanzhu.dev/)
 
 **如何登录：**这个地址不开放公众注册，也没有共享演示账户。运营者完成独立实例配置并分配邀请后，受邀用户才能进入自己的实例。没有邀请可以先看[界面截图](#界面预览)，或通过下方按钮部署自己的实例，再使用该实例配置的 `OWNER_EMAIL` 登录。现有站点已部署，不等于新增托管流程、邮件和免费容量已经通过生产验收。
 
