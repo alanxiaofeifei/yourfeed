@@ -19,6 +19,7 @@ import {schemaHealth} from './health';
 import {retentionStatus,saveRetentionPolicy,cleanupRetention} from './retention';
 import {readLibraryArchiveBody,restoreLibrary} from './library-restore';
 import {reserveManualImport} from './hosted-limits';
+import {getOnboarding,mutateOnboarding} from './onboarding';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -33,6 +34,8 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
     if(!['GET','HEAD'].includes(request.method))checkWriteRequest(request);
     await initialize(env);
+    if(path==='/api/onboarding'&&request.method==='GET')return response(await getOnboarding(env,userId));
+    if(path==='/api/onboarding'&&request.method==='PATCH')return response(await mutateOnboarding(env,userId,await readJson(request)));
     if(path.startsWith('/api/notebook/')){
       const {handleNotebookApi}=await import('./notebook');
       return await handleNotebookApi(request,env,userId);

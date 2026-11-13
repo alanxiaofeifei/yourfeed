@@ -7,6 +7,8 @@ import { getConfig, getProviderKey, getSecret, saveConfig, type Env } from '../s
 import { PROVIDERS, PROVIDER_METADATA, type ProviderMeta } from '../shared/providers';
 import type { Provider, ProviderConfig, Usage } from '../shared/types';
 import { I18nContext } from '../app/i18n';
+import { getOnboardingMessages } from '../shared/onboarding-messages';
+import type { Language } from '../shared/language';
 import { translate } from '../shared/locales';
 import AiSettings, { type Settings } from '../app/components/AiSettings';
 import { callModel, probeProviderModels } from '../server/ai';
@@ -127,7 +129,7 @@ describe('hosted mode and env key fallback', () => {
 });
 
 describe('UI component rendering: provider key note and free-tier text', () => {
-  function renderSettings(provider: Provider, language: 'zh' | 'en') {
+  function renderSettings(provider: Provider, language: Language) {
     const meta = PROVIDER_METADATA[provider];
     const settings: Settings = {
       provider,
@@ -199,14 +201,14 @@ describe('UI component rendering: provider key note and free-tier text', () => {
     [
       'nvidia',
       'https://build.nvidia.com',
-      '加入 NVIDIA Developer Program 后可免费用于开发测试，有速率限制。在模型页点「Get API Key」获取。',
-      'Free for development with the NVIDIA Developer Program, rate limited. Use "Get API Key" on a model page.',
+      '加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。',
+      'Free development access with the NVIDIA Developer Program; no payment method required, with quota and rate limits. Use "Get API Key" on a model page.',
     ],
     [
       'cerebras',
       'https://cloud.cerebras.ai',
-      '免费试用约 5 次/分钟、每天 100 万 tokens（以控制台为准）。',
-      'Free trial is about 5 requests/min and 1M tokens/day (see console).',
+      '使用前请查看当前试用资格、支付方式要求、价格与限额，以控制台为准。',
+      'Check current trial eligibility, payment-method requirements, pricing and limits in the console before use.',
     ],
   ] as const)(
     'renders key note for %s with correct link and free-tier text in zh and en',
@@ -228,6 +230,13 @@ describe('UI component rendering: provider key note and free-tier text', () => {
       expect(enHtml).toContain(freeTierEn.replace(/"/g, '&quot;'));
     },
   );
+
+  it.each(['zh', 'zh-TW', 'en', 'vi'] as const)('always warns that zero rates are not upstream budget protection in %s', language => {
+    const warning = getOnboardingMessages(language).help.costWarning;
+    for (const provider of ['nvidia', 'cerebras', 'custom'] as const) {
+      expect(renderSettings(provider, language)).toContain(warning.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;'));
+    }
+  });
 
   it('renders key note for existing providers without a free-tier line', () => {
     for (const [provider, keyUrl] of [
