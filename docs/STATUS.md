@@ -1,7 +1,7 @@
 # 当前项目状态
 
 ## Arrow 修复 + Issue B / #12（2026-11-15，已推送并部署 preview）
-- 检查点（2026-11-15 03:30 UTC+8）：提交 `354b244` 已推送到 PR #8，并部署到 preview `yourfeed-onboarding-preview` 版本 `26c055d7`（上一版 `be703246`），仅代码部署：未重传 secret、未迁移、未重置 preview D1；线上 `/api/health` 200、新卡片资源已确认。生产 `yourfeed` 与 `yourfeed-member-001` 未动。工具：Codex CLI exec，gpt-6.1-sol，reasoning high。下一步：Alan 审阅预览后做 C（不喜欢按钮）/ D / E / F。
+- 检查点（2026-11-15 03:18 UTC+8）：提交 `354b244` 已推送到 PR #8，并部署到 preview `yourfeed-onboarding-preview` 版本 `26c055d7`（上一版 `be703246`），仅代码部署：未重传 secret、未迁移、未重置 preview D1；线上 `/api/health` 200、新卡片资源已确认。生产 `yourfeed` 与 `yourfeed-member-001` 未动。工具：Codex CLI exec，gpt-6.1-sol，reasoning high。下一步：Alan 审阅预览后做 C（不喜欢按钮）/ D / E / F。
 - 分支 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8) / [Issue #12](https://github.com/alanxiaofeifei/yourfeed/issues/12)，基线 `6d15de1`；未改生产或成员配置。
 - 箭头贴 popover 面向目标的边缘，偏移限位、尖端指向目标中心；随翻转、resize、scroll、切步重算；手机 detached sheet 隐藏箭头。中英 1280/390 几何断言覆盖四向、RTL 与尺寸变化，保留 reduced motion 与原性能门槛。
 - 四语十题卡片、进度、单题/全程跳过、手动输入兴趣/选主题、首页/偏好设置/精选来源重入；既有 settings 保存 CAS 进度与题目，确认后才保存 profile、按批导入勾选来源；可撤销本次实际新增，重复来源不删。复用既有表和接口，无 schema、鉴权、隔离或权限改变。实现说明见 [first-use-onboarding.md](first-use-onboarding.md)。
