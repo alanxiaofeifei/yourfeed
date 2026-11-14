@@ -2,6 +2,17 @@
 
 更新时间：2026-11-14T20:40:00+08:00
 
+
+## 运维检查点：托管安全与成员定时更新（2026-11-14 23:05 +08:00，分支 `ops/member-scheduled-refresh`）
+- 授权：Alan 2026-11-14 同意执行 /operator 的 Cloudflare Access 保护和成员实例定时更新；不改变数据隔离与访问权限。
+- 成员定时更新：`yourfeed-member-001` 已部署版本 `2edcc040-d5ad-4ba7-ae8c-64a69eb2b1d4`（2026-11-14 22:36 +08:00），新增 cron `*/15 * * * *` 与 `BACKGROUND_SCHEDULE_CONFIGURED=true`；运行代码与 `e2e92e3` 相同（其后只有文档提交），无迁移、无数据改动。回滚：`wrangler rollback 16a2d9db-5cae-4bc5-b1c8-6691623edc86 --name yourfeed-member-001`，并删除 cron（`wrangler triggers deploy` 空 crons 或 API `PUT .../schedules []`）。部署前 D1 time-travel 书签 `00000010-00000000-00005123-df8bf64a953e8e249d489fc39dc7f3a8`（未用于恢复）。
+- 模板：`hosting/scripts/prepare-instance.mjs` 为以后的名额生成同样的 cron 和变量（PR 内单测通过）。
+- 行为：cron 只调用已有的 `scheduled` → `runBackground`：控制服务准入检查、有限的缓存清理；只有成员在「设置 → 存储与归档」打开后台更新（默认关闭，间隔 ≥6 小时）才抓取来源（每次 1 个），AI 另需本人开启并使用本人 Key。
+- 验证：`/login` 200、`/` 302 → `/login`；GraphQL 分析显示 2026-11-14 23:00 +08:00 起每 15 分钟 1 次调用、status success、1 个子请求（控制服务准入）。`wrangler tail` 在本机多次断开，Workers Observability 查询无 API 权限，未取得逐条 cron 日志。
+- 生产 `yourfeed` 目前没有任何 cron（任务假设"复用生产 cron"不成立）；如需生产也定时更新，需单独批准。Workers Free 每账号最多 5 个 cron，生产 + 5 个名额会超出。
+- /operator Cloudflare Access：**未完成，阻塞**。当前 API token 创建 Access 应用返回 `1010 auth.forbidden`（organizations / groups 读取也返回 Authentication error）。需要 Alan 给 token 增加账户权限 `Access: Apps and Policies — Edit`（若同时保护 `/admin` 供本机脚本调用，还需 `Access: Service Tokens — Edit`），或在 Zero Trust 控制台手动创建。建议配置：Self-hosted 应用 `yourfeed-control.alanzhu.dev/operator`，Allow 仅 `alan.xiaofei224@gmail.com`，会话 1h；不要覆盖 `/internal/*`（成员实例调用）和 `/health`。`/operator` 目前仍公开返回页面，但 `/admin` 操作需 HMAC 签名 + nonce。
+- 下一步：Alan 补权限后按上面配置创建 Access 应用并验证匿名 `/operator` 302 到 `alaninsights.cloudflareaccess.com`，成员实例路径不受影响。
+
 ## 当前目标
 - 目标与范围：推进 [Draft PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8) 的四语言、可恢复首次使用引导；本检查点另记录开发偏好文档的采纳。
 - 验收条件：补齐 Alan 已确认的决定，验证非生产预览；功能发布到生产或成员实例前取得 Alan 明确批准。完整 PR 验收条件未核实。
