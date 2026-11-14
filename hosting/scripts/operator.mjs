@@ -11,9 +11,13 @@ try{
  const data=JSON.parse(raw);if(!['register','invite','list','revoke','expire','renew'].includes(data.operation))throw new Error('Invalid operator operation');
  if(dryRun){console.log(JSON.stringify({dryRun:true,origin:base.origin,operation:data.operation,network:false,payloadPrinted:false}));}
  else{
+  const clientId=process.env.CF_ACCESS_CLIENT_ID,clientSecret=process.env.CF_ACCESS_CLIENT_SECRET;
+  if(Boolean(clientId)!==Boolean(clientSecret))throw new Error('Set both CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET for Cloudflare Access, or leave both unset');
+  const accessHeaders=clientId&&clientSecret?{'CF-Access-Client-Id':clientId,'CF-Access-Client-Secret':clientSecret}:{};
   const secret=process.env.CONTROL_ADMIN_SECRET;if(!secret||secret.length<43)throw new Error('Provide CONTROL_ADMIN_SECRET through the operator secret environment');
   const timestamp=String(Date.now()),nonce=randomBytes(24).toString('hex'),digest=createHash('sha256').update(raw).digest('hex'),canonical=`POST\n/admin\n${timestamp}\n${nonce}\n${digest}`,signature=createHmac('sha256',secret).update(canonical).digest('hex');
-  const response=await fetch(new URL('/admin',base),{method:'POST',redirect:'manual',signal:AbortSignal.timeout(15_000),headers:{'Content-Type':'application/json','x-hosting-timestamp':timestamp,'x-hosting-nonce':nonce,'x-hosting-signature':signature},body:raw});
+  const response=await fetch(new URL('/admin',base),{method:'POST',redirect:'manual',signal:AbortSignal.timeout(15_000),headers:{'Content-Type':'application/json','x-hosting-timestamp':timestamp,'x-hosting-nonce':nonce,'x-hosting-signature':signature,...accessHeaders},body:raw});
+  if(response.status>=300&&response.status<400)throw new Error('Cloudflare Access blocked the request; set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to an Access service token');
   if(!response.ok)throw new Error('Control operation failed (HTTP '+response.status+'); inspect the authenticated control state before retrying');
   const result=await response.json();
   // register payload contains a capability; the response does not. Operator lists may contain invite emails.
