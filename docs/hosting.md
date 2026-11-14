@@ -39,6 +39,8 @@ This workflow is source-level infrastructure, **not evidence that five live inst
 
 ## Scheduled background refresh (hosted instances)
 
+Member Workers disable workers.dev and preview URLs; only the custom domain origin (`AUTH_BASE_URL`) serves; rollback by redeploying with `workers_dev: true` (or the previous version) — no data change.
+
 The hosted preparation helper configures each member Worker with one cron trigger (`*/15 * * * *`, every 15 minutes) and `BACKGROUND_SCHEDULE_CONFIGURED=true`. The cron only invokes the existing `scheduled` handler (`worker/index.ts` → `server/background.ts` `runBackground`): an admission check against the control service, bounded retention cleanup, and source sync (one source per tick) only if the member enabled background updates in **Settings → Storage** (default off; interval at least 6 hours). AI runs only if the member separately opted in with her own key; the cron does not enable it.
 
 Workers Free allows five cron triggers per account. Production `yourfeed` currently has no cron; five member slots would use all five triggers, and adding a production cron would bring the total to six, exceeding Free. Use one cron per Worker and check the account plan and all account triggers before adding slot 5.
