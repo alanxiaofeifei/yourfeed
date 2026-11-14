@@ -28,3 +28,16 @@ Next starts at language, Skip at profile interests, Back at profile save, Exit a
 Required screenshot evidence can be regenerated with `PLAYWRIGHT_PRODUCTION=1 TOUR_SCREENSHOTS=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- e2e/tour-screenshots.spec.mjs --workers=1`; files go to `/workspace/yourfeed-onboarding-20261112/phaseA-shots/`. The normal production regression command is `PLAYWRIGHT_PRODUCTION=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- --workers=1` (performance/screenshot collection are opt-in, interaction assertions remain active).
 
 The old Profiler benchmark remains development-only and is skipped in production mode. Production interactions are not compared against development React timings.
+
+
+Arrow geometry regressions are in `e2e/tour-arrow.spec.mjs`: zh/en at 1280 and 390, all four desktop edges, flips, RTL, resize/scroll/step updates, and hidden arrows for detached mobile sheets. The assertion measures the arrow bounding box touching the popover and the triangle's base-to-tip vector aiming at the target center.
+
+Issue B reuses the same production harness and thresholds. Collect the seven Phase A/B screenshots together with:
+
+```sh
+PLAYWRIGHT_PRODUCTION=1 TOUR_SCREENSHOTS=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome \
+  npm run test:e2e -- e2e/tour-screenshots.spec.mjs e2e/preference-cards.spec.mjs \
+  --grep 'phase A screenshot|phase B screenshot' --workers=1
+```
+
+Phase B files are `phaseB-shots/desktop-cards-zh-CN.png`, `mobile-cards-zh-CN.png` and `desktop-cards-en.png` beside the checkout. Their APIs, profiles and subscriptions are synthetic; the four-language bank is the actual shared application data.

@@ -74,10 +74,16 @@ const legacyCatalog: Omit<SourceCatalogEntry,'verification'>[] = [
 
 const checkedAt='2026-11-10T16:25:00.000Z';
 const checked:Record<string,{format:'RSS'|'Atom'|'RDF';items:number}>={
- 'juya-daily':{format:'RSS',items:10},sspai:{format:'RSS',items:10},ruanyifeng:{format:'Atom',items:3},'github-blog':{format:'RSS',items:10},'google-research':{format:'RSS',items:100},nasa:{format:'RSS',items:10},'bbc-science':{format:'RSS',items:41},
+ 'juya-daily':{format:'RSS',items:10},sspai:{format:'RSS',items:10},ruanyifeng:{format:'Atom',items:3},'github-blog':{format:'RSS',items:10},'google-research':{format:'RSS',items:100},nasa:{format:'RSS',items:10},'bbc-science':{format:'RSS',items:41},'king-arthur-baking':{format:'RSS',items:20},
 };
 const starters=new Set(['juya-daily','sspai','openai-news','google-research','github-blog','nasa','simon-willison','julia-evans']);
 const additional: Array<{id:string;name:string;locator:string;topics:Topic[];language:'zh'|'en';format:'RSS'|'Atom'|'RDF';items:number;coverage?:'metadata'|'excerpt'|'unknown';needsAdapter?:boolean;zh:string;en:string}>=[
+ {id:'atlas-obscura',name:'Atlas Obscura',locator:'https://www.atlasobscura.com/feeds/latest',topics:['humanities','science'],language:'en',format:'RSS',items:27,zh:'地方文化、历史与奇趣故事。',en:'Places, history and curious stories.'},
+ {id:'sciencedaily-animals',name:'ScienceDaily Animals & Nature',locator:'https://www.sciencedaily.com/rss/plants_animals.xml',topics:['science','making'],language:'en',format:'RSS',items:60,zh:'动植物与自然研究新闻；并非猫狗专属频道。',en:'Animal and nature research news, not a dedicated cat or dog channel.'},
+ {id:'gcores',name:'机核 GCORES',locator:'https://www.gcores.com/rss',topics:['humanities','making'],language:'zh',format:'RSS',items:20,zh:'游戏、文化与日常兴趣故事；并非宠物专属频道。',en:'Games, culture and everyday interests, not a dedicated pet feed.'},
+ {id:'lifehacker',name:'Lifehacker',locator:'https://lifehacker.com/feed/rss',topics:['making','tools'],language:'en',format:'RSS',items:100,zh:'生活技巧、工具与动手实践。',en:'Everyday tips, tools and practical projects.'},
+ {id:'bbc-world',name:'BBC World News',locator:'https://feeds.bbci.co.uk/news/world/rss.xml',topics:['humanities','english'],language:'en',format:'RSS',items:23,zh:'全球新闻与多元视角。',en:'World news and international perspectives.'},
+
  {id:'openai-news',name:'OpenAI News',locator:'https://openai.com/news/rss.xml',topics:['ai','tools'],language:'en',format:'RSS',items:1375,zh:'OpenAI 官方更新；订阅通常提供摘要与来源链接。',en:'Official OpenAI updates, usually with excerpts and source links.'},
  {id:'deepmind',name:'Google DeepMind',locator:'https://deepmind.google/blog/rss.xml',topics:['ai','science'],language:'en',format:'RSS',items:100,zh:'DeepMind 官方研究与产品动态。',en:'Official research and product updates from DeepMind.'},
  {id:'huggingface',name:'Hugging Face Blog',locator:'https://huggingface.co/blog/feed.xml',topics:['ai','code'],language:'en',format:'RSS',items:901,coverage:'metadata',zh:'开源模型和工具；部分条目仅提供标题、日期和链接。',en:'Open models and tools. Some entries contain only a title, date, and link.'},
@@ -95,6 +101,6 @@ const additional: Array<{id:string;name:string;locator:string;topics:Topic[];lan
 ];
 /** Validation snapshots describe the feed response, never end-to-end app success. */
 export const sourceCatalog:SourceCatalogEntry[]=[
- ...legacyCatalog.map(entry=>({...entry,starter:starters.has(entry.id),verification:{status:entry.id==='ruanyifeng'?'needs-adapter':checked[entry.id]?'verified':'unverified',...(checked[entry.id]?{checkedAt,...checked[entry.id]}:{}),coverage:'unknown',...(entry.id==='ruanyifeng'?{note:{zh:'Feed 有效，条目 HTTP 链接需要安全升级适配。',en:'The feed is valid, but HTTP entry links need a verified HTTPS upgrade.'}}:{})} as SourceCatalogEntry['verification']})),
- ...additional.map(entry=>({id:entry.id,name:entry.name,platform:'rss' as const,locator:entry.locator,topics:entry.topics,language:entry.language,contentType:entry.id==='yourfeed-releases'?'news' as const:'article' as const,description:{zh:entry.zh,en:entry.en},starter:starters.has(entry.id),verification:{status:entry.needsAdapter?'needs-adapter' as const:'verified' as const,checkedAt,format:entry.format,items:entry.items,coverage:entry.coverage??'unknown'}})),
+ ...legacyCatalog.map(entry=>({...entry,starter:starters.has(entry.id),verification:{status:entry.id==='ruanyifeng'?'needs-adapter':checked[entry.id]?'verified':'unverified',...(checked[entry.id]?{checkedAt:entry.id==='king-arthur-baking'?'2026-11-14T18:15:00.000Z':checkedAt,...checked[entry.id]}:{}),coverage:'unknown',...(entry.id==='ruanyifeng'?{note:{zh:'Feed 有效，条目 HTTP 链接需要安全升级适配。',en:'The feed is valid, but HTTP entry links need a verified HTTPS upgrade.'}}:{})} as SourceCatalogEntry['verification']})),
+ ...additional.map(entry=>({id:entry.id,name:entry.name,platform:'rss' as const,locator:entry.locator,topics:entry.topics,language:entry.language,contentType:entry.id==='yourfeed-releases'?'news' as const:'article' as const,description:{zh:entry.zh,en:entry.en},starter:starters.has(entry.id),verification:{status:entry.needsAdapter?'needs-adapter' as const:'verified' as const,checkedAt:['atlas-obscura','sciencedaily-animals','gcores','lifehacker','bbc-world'].includes(entry.id)?'2026-11-14T18:15:00.000Z':checkedAt,format:entry.format,items:entry.items,coverage:entry.coverage??'unknown'}})),
 ];

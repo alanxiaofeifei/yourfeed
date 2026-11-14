@@ -83,6 +83,7 @@ function useTourState({userId,ready,onNavigate}:TourOptions) {
   if(action==='dismiss'||action==='finish'){setOpen(false);restoreFocus();}else setOpen(true);
  };
  const pause=()=>{setOpen(false);setWelcome(false);setMenu(false);restoreFocus();act('dismiss');};
+ useEffect(()=>{const opening=()=>{if(open||welcome||menu)pause();};window.addEventListener('yourfeed:preference-cards',opening);return()=>window.removeEventListener('yourfeed:preference-cards',opening);});
  const step=data?.state.currentStep||ONBOARDING_STEPS[0];const index=ONBOARDING_STEPS.indexOf(step);const target=targetForStep(step);
  const regionRef=useRef<HTMLElement>(null);
  useEffect(()=>{

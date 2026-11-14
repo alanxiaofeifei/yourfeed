@@ -87,3 +87,28 @@ describe('Bounded, privacy-preserving preference evidence',()=>{
     const items=Array.from({length:250},(_,index)=>item({id:'item-'+index,sourceId:'manual'}));const feedback=Object.fromEntries(items.map(entry=>[entry.id,{liked:true}]));expect(profileAdviceEvidence([],items,feedback).feedbackCount).toBe(200);expect(profileAdviceEvidence([],items,{'item-0':{liked:false,saved:false}}).feedbackCount).toBe(0);
   });
 });
+
+
+// The preference-card provider seam uses the same real adapter and spending ledger.
+import {generatePreferenceCards} from '../server/preference-cards';
+import {curatedQuestions} from '../shared/preference-cards';
+describe('AI preference-card generation with deterministic curated fallback',()=>{
+ it('uses the working provider, strict schema, selected language and shared budget',async()=>{
+  const questions=curatedQuestions('vi');network.mockResolvedValue(modelResponse({questions}));
+  expect(await generatePreferenceCards(env,'vi')).toEqual({source:'ai',questions});
+  const body=JSON.parse((network.mock.calls[0] as any)[1].body);expect(body.instructions).toContain('Vietnamese');expect(body.text.format.name).toBe('yourfeed_preference_cards');expect(body.text.format.schema.additionalProperties).toBe(false);expect(body.input).not.toContain(state.key);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:true}));
+ });
+ it('missing credentials and rate limits fall back without a model call',async()=>{
+  state.key=undefined;expect((await generatePreferenceCards(env,'en')).source).toBe('curated');expect(network).not.toHaveBeenCalled();
+  state.key='fake-profile-advice-key';state.config.dailyLimit=0;expect((await generatePreferenceCards(env,'en')).source).toBe('curated');expect(network).not.toHaveBeenCalled();
+ });
+ it.each(['invalid JSON','unknown source','extra property','duplicate dimension'])('%s falls back, accounting known usage once',async kind=>{
+  const value:any={questions:curatedQuestions('en')};if(kind==='unknown source')value.questions[0].optionA.sourceIds=['invented'];if(kind==='extra property')value.questions[0].url='https://invented.test';if(kind==='duplicate dimension')value.questions[1].dimension=value.questions[0].dimension;
+  network.mockResolvedValue(kind==='invalid JSON'?new Response(JSON.stringify({output_text:'invalid JSON',usage:{input_tokens:1200,output_tokens:200}})):modelResponse(value));
+  expect(await generatePreferenceCards(env,'en')).toEqual({source:'curated',questions:curatedQuestions('en')});expect(db.settleUsage).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false}));
+ });
+ it('aborts a stalled provider after five seconds, with no provider switch or retry',async()=>{
+  network.mockImplementation(async(_url:unknown,options:RequestInit)=>new Promise((_resolve,reject)=>options.signal?.addEventListener('abort',()=>reject(new DOMException('Timed out','TimeoutError')))));
+  const started=Date.now();expect((await generatePreferenceCards(env,'en')).source).toBe('curated');expect(Date.now()-started).toBeLessThan(6000);expect(network).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false}));
+ },7000);
+});

@@ -219,8 +219,8 @@ async function settleResult(env: Env, config: ProviderConfig, reservationId: str
 /** One owner-triggered task, using the active provider and the shared spending ledger.
  * Automatic reading need not be enabled. Validation happens before successful settlement;
  * even unusable replies with known usage are charged to the application budget once. */
-export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
-  const config=await getConfig(env);const key=await getProviderKey(env,config.provider);
+export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{timeoutSeconds?:number;prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
+  const saved=await getConfig(env);const config={...saved,...(task.timeoutSeconds?{timeoutSeconds:task.timeoutSeconds}:{})};const key=await getProviderKey(env,config.provider);
   if(!key)return {needsConfiguration:true};
   validateRuntimeConfig(config);
   if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');

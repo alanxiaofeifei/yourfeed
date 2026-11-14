@@ -1,5 +1,15 @@
 # 当前项目状态
 
+## Arrow 修复 + Issue B / #12（2026-11-15，本地完成）
+- 分支 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8) / [Issue #12](https://github.com/alanxiaofeifei/yourfeed/issues/12)，基线 `6d15de1`，本轮全部为未提交改动；未 commit / push / merge / deploy，未执行远程 Wrangler，未改生产或成员配置。
+- 箭头贴 popover 面向目标的边缘，偏移限位、尖端指向目标中心；随翻转、resize、scroll、切步重算；手机 detached sheet 隐藏箭头。中英 1280/390 几何断言覆盖四向、RTL 与尺寸变化，保留 reduced motion 与原性能门槛。
+- 四语十题卡片、进度、单题/全程跳过、手动输入兴趣/选主题、首页/偏好设置/精选来源重入；既有 settings 保存 CAS 进度与题目，确认后才保存 profile、按批导入勾选来源；可撤销本次实际新增，重复来源不删。复用既有表和接口，无 schema、鉴权、隔离或权限改变。实现说明见 [first-use-onboarding.md](first-use-onboarding.md)。
+- AI 为显式定制：复用当前用户 provider 与预算账本，5s provider 超时、6s 前端回退；十题、唯一 ID/维度、文本长度、主题及目录 ID 严格校验，失败回精选题库；Issue D 未实现。19 源实测 18 个有效 RSS/Atom，Solidot 403，以橘鸦/BBC 替代；证据仓库外 `feed-B-verification.json`。
+- 最终门禁（Node 24.22.1 / npm 11.21.1，现有 package-lock）：unit **751/751（64 files）**、typecheck、Cloudflare build 全通过；生产 e2e **52 passed / 9 opt-in或开发专用 skipped**，截图另跑 **7/7**，性能 `TOUR_PERF_ASSERT=1` **1/1**（两轮各 192 样本）通过；`git diff --check` 通过。日志在仓库外 `unit-B.log`、`typecheck-B.log`、`build-B.log`、`e2e-B.log`、`screenshots-B.log`、`perf-B.log`。
+- 点击→可绘制帧代理最终 p50/p95（ms，Next/Skip/Back/Exit，每动作12次）：桌面原生 **30.0/31.1 · 29.7/30.7 · 29.5/30.7 · 29.4/31.3**；桌面模拟 PATCH+250ms **29.9/31.6 · 29.5/31.3 · 30.1/31.3 · 29.6/31.2**；手机390 CPU4×原生 **28.5/30.2 · 28.1/30.3 · 28.3/30.6 · 27.4/30.4**，+250ms **28.2/30.2 · 28.9/30.4 · 28.4/31.3 · 28.2/33.5**。与 Phase A 典型水平一致；首轮手机+250ms Next 单次120.3ms尖峰，同构建复测未复现，保留 `perf-B-first.json`，不推定其原因。
+- 截图：仓库外 `phaseA-shots/` 四张已重生成；`phaseB-shots/desktop-cards-zh-CN.png`、`mobile-cards-zh-CN.png`、`desktop-cards-en.png` 已生成并目视检查。所有浏览器 API/数据为合成，构建经本地 Wrangler 提供；未调用真实 provider，未验证真实移动设备/屏幕阅读器。profile 与 sources 分步保存，Undo 在本次结果页仅移除实际新增来源。
+- 下一步：人工审阅本地 diff 与仓库外 `ARROW_B_DONE.md`；本任务到此停止，后续发布及 Issue D 另行授权。
+
 ## Phase A / Issue #11（issues #11–#16 第一阶段，本地检查点）
 - 目标：用轻量 popover + 单 spotlight + 箭头替换旧内联 tour；[ADR 0001](adr/0001-lightweight-onboarding-tour.md) 选独立实现的 driver.js-like MIT 方案，无新增依赖。分支 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)。本节优先于下方旧反馈实现说明。
 - 根因证据：真实 Cloudflare 构建经本地 Wrangler 提供资源，trusted click→两次 rAF 的可绘制帧代理（非物理呈现/INP）；旧 Next/Skip/Back 在 PATCH 完成后才变化。明确模拟 PATCH +250ms 时 36/36 导航请求先完成才呈现；Exit 独立受保留子树约180ms退出期拖慢。不是把开发 Profiler 数字当生产证据，也未声称测到了 Alan 线上真实 RTT。

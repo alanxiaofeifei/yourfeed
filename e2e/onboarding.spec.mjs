@@ -223,7 +223,7 @@ for (const width of [1280,390]) {
    if(reduced){
     expect(await ring.evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
     expect(await ring.evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('opacity');
-     expect(await ring.locator('.tour-pointer').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
+     expect(await page.locator('.tour-pointer').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
    }
    await page.screenshot({path:`${shots}/${reduced?'reduced-motion':width===390?'mobile-spotlight-zh-CN':'desktop-spotlight-zh-CN'}.png`});
    await chooseChapter(page, 'feed');

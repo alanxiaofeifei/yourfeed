@@ -13,7 +13,7 @@
 .tour-help{margin-top:8px}.tour-help summary{min-height:36px;cursor:pointer;padding:8px 0;font-size:13px}.tour-help a{color:inherit;text-decoration:underline}.tour-help li{margin-bottom:8px;line-height:1.6}
 [data-tour-highlight=true]{scroll-margin-block:90px}
 .tour-spotlight{position:fixed;left:0;top:0;z-index:100;pointer-events:none;box-sizing:border-box;border:2px solid var(--amber);border-radius:3px;box-shadow:0 0 0 3px var(--bg),0 0 0 100vmax #0003;transition:transform var(--motion-base,360ms) var(--motion-ease-out,ease-out),opacity var(--motion-fast,180ms) ease;will-change:transform}
-.tour-spotlight[hidden]{display:none}.tour-pointer{position:absolute;top:100%;font-size:28px;line-height:1;color:var(--amber);text-shadow:0 1px var(--bg);animation:tour-point 1.2s ease-in-out infinite}.tour-pointer[data-direction=down]{top:auto;bottom:100%;rotate:180deg}
+.tour-spotlight[hidden]{display:none}.tour-pointer{position:fixed;z-index:101;overflow:visible;pointer-events:none;fill:var(--amber);display:none}
 .tour-region :focus-visible,.tour-launcher:focus-visible{outline:3px solid var(--amber);outline-offset:3px}.tour-cost-warning{padding:10px;border:1px solid var(--amber);line-height:1.6}
 .tour-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 @keyframes tour-open{from{opacity:0}to{opacity:1}}@keyframes tour-step{from{opacity:.6}to{opacity:1}}@keyframes tour-point{50%{translate:0 5px}}

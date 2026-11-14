@@ -6,6 +6,7 @@ const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(value,Ma
 /** One persistent spotlight; layout reads/writes are coalesced, never React state. */
 export function Spotlight({anchor,step,request,onMissing,highlight=true}:{anchor:string;step:string;request:number;onMissing:(missing:boolean)=>void;highlight?:boolean}) {
  const ring=useRef<HTMLDivElement>(null);
+ const arrow=useRef<SVGSVGElement>(null);
  useLayoutEffect(()=>{
   let target:HTMLElement|null=null,frame=0,scrollPending=true,lastW=0,lastH=0,confirmSeen=false;
   const panel=document.querySelector<HTMLElement>('.tour-region');
@@ -59,13 +60,33 @@ export function Spotlight({anchor,step,request,onMissing,highlight=true}:{anchor
      const best=fits||placements[rect.left>left+w/2?1:0];x=best.x;y=best.y;
     }
    }
+   const px=clamp(x,left+12,left+w-pw-12),py=clamp(y,top+12,top+h-ph-12);
    Object.assign(panel.style,{width:`${pw}px`,left:`${clamp(x,left+12,left+w-pw-12)}px`,top:`${clamp(y,top+12,top+h-ph-12)}px`});
    const overlay=ring.current;if(!overlay)return;
    overlay.hidden=!highlight||!rect||rect.width===0||rect.height===0||rect.bottom<=top||rect.top>=top+h;
+   if(!rect&&arrow.current)arrow.current.style.display='none';
    if(rect){
     Object.assign(overlay.style,{width:`${rect.width+10}px`,height:`${rect.height+10}px`,transform:`translate3d(${rect.left-5}px,${rect.top-5}px,0)`});
-    const pointer=overlay.firstElementChild as HTMLElement|null;
-    if(pointer){pointer.style.left=`${clamp(rect.width/2,14,rect.width-14)}px`;pointer.dataset.direction=rect.top<top+48||rect.top<y?'up':'down';}
+    const pointer=arrow.current;
+    if(pointer){
+     // The arrow belongs to the popover, never the highlighted target. Physical
+     // viewport coordinates also work when the document's inline direction is RTL.
+     const side=rect.right<=px?'left':rect.left>=px+pw?'right':rect.bottom<=py?'top':rect.top>=py+ph?'bottom':null;
+     pointer.style.display=!highlight||overlay.hidden||mobile||!side?'none':'block';
+     if(side){
+      const horizontal=side==='top'||side==='bottom';
+      const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+      const bx=horizontal?clamp(cx,px+18,px+pw-18):side==='left'?px:px+pw;
+      const by=horizontal?(side==='top'?py:py+ph):clamp(cy,py+18,py+ph-18);
+      const dx=cx-bx,dy=cy-by,length=Math.hypot(dx,dy)||1;
+      const tx=bx+dx/length*12,ty=by+dy/length*12;
+      const points=horizontal?[[bx-8,by],[bx+8,by],[tx,ty]]:[[bx,by-8],[bx,by+8],[tx,ty]];
+      const ax=Math.min(...points.map(p=>p[0])),ay=Math.min(...points.map(p=>p[1]));
+      Object.assign(pointer.style,{left:`${ax}px`,top:`${ay}px`,width:`${Math.max(...points.map(p=>p[0]))-ax}px`,height:`${Math.max(...points.map(p=>p[1]))-ay}px`});
+      pointer.dataset.side=side;
+      pointer.firstElementChild?.setAttribute('points',points.map(p=>`${p[0]-ax},${p[1]-ay}`).join(' '));
+     }
+    }
    }
   };
   function schedule(){if(!frame)frame=requestAnimationFrame(measure);}
@@ -75,5 +96,5 @@ export function Spotlight({anchor,step,request,onMissing,highlight=true}:{anchor
   measure();
   return()=>{cancelAnimationFrame(frame);resize.disconnect();mutations.disconnect();window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);target?.removeAttribute('data-tour-highlight');if(dialog&&originalDialog)Object.assign(dialog.style,originalDialog);};
  },[anchor,step,request,onMissing,highlight]);
- return createPortal(<div ref={ring} className="tour-spotlight" data-spotlight={anchor} aria-hidden="true" hidden><span className="tour-pointer">↑</span></div>,document.querySelector('[role="dialog"]')?.closest('.modal-backdrop')||document.body);
+ return createPortal(<><div ref={ring} className="tour-spotlight" data-spotlight={anchor} aria-hidden="true" hidden></div><svg ref={arrow} className="tour-pointer" aria-hidden="true"><polygon/></svg></>,document.querySelector('[role="dialog"]')?.closest('.modal-backdrop')||document.body);
 }

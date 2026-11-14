@@ -20,6 +20,7 @@ import {retentionStatus,saveRetentionPolicy,cleanupRetention} from './retention'
 import {readLibraryArchiveBody,restoreLibrary} from './library-restore';
 import {reserveManualImport} from './hosted-limits';
 import {getOnboarding,mutateOnboarding} from './onboarding';
+import {getPreferenceCards,savePreferenceCards,generatePreferenceCards} from './preference-cards';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -40,6 +41,9 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
       const {handleNotebookApi}=await import('./notebook');
       return await handleNotebookApi(request,env,userId);
     }
+    if(path==='/api/preference-cards'&&request.method==='GET')return response(await getPreferenceCards(env,userId,localeFromTag(request.headers.get('accept-language')||'en')));
+    if(path==='/api/preference-cards'&&request.method==='PUT')return response(await savePreferenceCards(env,userId,await readJson(request)));
+    if(path==='/api/preference-cards/generate'&&request.method==='POST')return response(await generatePreferenceCards(env,localeFromTag(request.headers.get('accept-language')||'en')));
     if(path==='/api/profile'&&request.method==='GET')return response(await getProfile(env));
     if(path==='/api/profile'&&request.method==='PUT')return response(await saveProfile(env,await readJson(request)));
     if(path==='/api/profile/advice'&&request.method==='POST'){
