@@ -4,6 +4,14 @@
 
 
 
+
+## 运维检查点：控制台 Cloudflare Access（2026-11-15 00:30 +08:00，分支 `ops/operator-access`）
+- 授权：Alan 2026-11-15 给 API token 加了 Access 权限并同意启用保护。
+- Access 应用 `YourFeed hosting operator`（id `11d48d9b-f578-4d05-bc18-11f7da09ea88`，aud 前缀 `113f67e1`）：覆盖 `yourfeed-control.alanzhu.dev/operator` 与 `/admin`，会话 1h。策略：`Alan only`（Allow，仅 `alan.xiaofei224@gmail.com`）；`Operator CLI service token`（Service Auth，service token id `d7f92b57-73b8-4235-8011-cf56efcb6855`，有效期至 2027-11-15）。`/health`、`/internal/*` 不在保护范围（成员 Worker 通过 service binding 调用）。
+- 本机脚本：`hosting/scripts/operator.mjs` 读取 `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`；凭据只存本机私有目录（600），不入仓库。HMAC 管理签名保持不变。
+- 验证：匿名 `/operator`、`/admin` → 302 到 `alaninsights.cloudflareaccess.com`；`/health` 200；匿名 POST `/internal/policy` 由 Worker 自己处理（415，未被 Access 拦）；脚本无 token → 清楚报错，带 token 的 `list` 成功；`yourfeed-m1.alanzhu.dev/login` 200，`/` 302 → `/login`。
+- 移除 / 回滚：Zero Trust → Access → Applications 删除该应用；Access → Service credentials 删除该 service token（或 API `DELETE /accounts/{id}/access/apps/{app_id}`、`DELETE .../access/service_tokens/{id}`）。不涉及 Worker 版本或数据。service token 到期前需轮换。
+
 ## 运维检查点：关闭成员 workers.dev 地址（2026-11-15 00:15 +08:00，分支 `ops/member-disable-workers-dev`）
 - 授权：Alan 2026-11-15 同意关闭备用访问地址。`yourfeed-member-001` 部署版本 `5bcde704-b5bd-4396-9d9f-d44a0c61ea87`，`workers_dev=false`、`preview_urls=false`；运行代码、cron、变量、D1 均不变，无迁移。模板 `prepare-instance.mjs` 同步生成这两项。
 - 验证：`yourfeed-member-001.alan-xiaofei224.workers.dev/login` → 404（error 1042）；subdomain API `enabled:false, previews_enabled:false`；`yourfeed-m1.alanzhu.dev/login` 200，`/` 302 → `/login`。

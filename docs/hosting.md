@@ -37,6 +37,14 @@ The control `/admin` endpoint accepts operator operations including `register`, 
 
 This workflow is source-level infrastructure, **not evidence that five live instances have been provisioned**, mail delivered, OAuth approved, or free-plan load tests passed. A deployment is not available for invitees until the operator completes those steps and acceptance tests.
 
+### Operator console protection
+
+On `https://yourfeed-control.alanzhu.dev`, `/operator` and `/admin` are behind Cloudflare Access: browser access is limited to Alan's email, with a 1-hour session. The local CLI uses an Access service token through `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`; keep these credentials only in the operator's private directory outside Git and load them into the CLI environment. Set both variables together; their values must never be logged.
+
+`/health` and `/internal/*` (called by member Workers via service binding) are intentionally not covered by Access.
+
+To remove this protection, delete the Access application and service token in **Zero Trust → Access → Applications / Service credentials**, respectively. The HMAC admin signature remains in place either way.
+
 ## Scheduled background refresh (hosted instances)
 
 Member Workers disable workers.dev and preview URLs; only the custom domain origin (`AUTH_BASE_URL`) serves; rollback by redeploying with `workers_dev: true` (or the previous version) — no data change.
