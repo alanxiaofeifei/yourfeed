@@ -1,5 +1,11 @@
 # 当前项目状态
 
+
+## PR #8 就绪状态（2026-11-15 05:25 UTC+8）
+- 预览 `yourfeed-onboarding-preview` 版本 `1250d034` 含 A（轻量引导+箭头）、B #12（偏好卡片）、C #13（不喜欢+学习排序）、D #14（免 Key 免费 AI 通道）、E #15（设置 7 项+账户去重）、F #16（刷新方式）。相对 main 无数据库迁移、未改 `wrangler.jsonc`；CI verify 通过；PR 仍为 Draft。
+- F #16：提交 `04c8299`；手动 / 打开时（默认）/ 后台定时（1–24h），复用实例已有 cron 并按间隔判断到期，仅 `BACKGROUND_SCHEDULE_CONFIGURED=true` 时可选；无定时器则回退为打开时。账号 cron 槽位 1/5（仅 member-001 `*/15`）；未新增 cron。集中调度器方案见 [ADR 0002](adr/0002-refresh-scheduling.md)（未实现，需 Alan 批准）。门禁：unit 858/858、typecheck、build、e2e 90 passed / 25 skipped、性能 1/1（桌面 p95 ≤30.9ms，手机 ≤50.4ms，37→52ms 漂移原因未证实，未修剪）、截图 4/4。
+- Alan 需在预览验收：引导与箭头、偏好卡片（含 AI 出题或回退）、不喜欢/撤销/不喜欢列表、免费 AI 通道提示与恢复默认、设置 7 项与搜索、刷新方式（预览无定时器，后台模式应显示不可用）。
+- 生产发布（须 Alan 明确同意后）：`ONBOARDING_AUTO_OFFER_CUTOFF` 设为实际上线时间 → 部署生产 `yourfeed`（当前 9c55d8b3，回滚 a316592e）并 smoke → 部署 `yourfeed-member-001`（保持其 `*/15` cron 与 `BACKGROUND_SCHEDULE_CONFIGURED=true`，回滚见上文）并 smoke → 合并 PR → 按 [PREVIEW 说明] 执行 teardown 删除预览 Worker 与 D1。无迁移需要执行。
 ## Issue F / #16（2026-11-15，本地验收完成）
 - [Issue #16](https://github.com/alanxiaofeifei/yourfeed/issues/16) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`，基线 `31d4924`；执行仓库外 `TASK_F.md`。所有改动未暂存、未提交、未推送、未合并、未部署；无 GitHub 写入、远程 Wrangler、真实 provider 请求或私密目录读取。
 - 存储页四语刷新方式（manual / on_open 默认 / scheduled）、1/2/4/6/12/24 小时选择（接口 1..168），复用 meta、兼容旧 enabled。首页先读策略，手动模式不自动 sync，失败暂停自动刷新；保存中保持选择、失败恢复。来源自身的六小时硬编码也已接入所选间隔；保留分批、退避、预算和现有权限/隔离，无迁移或依赖改动。
