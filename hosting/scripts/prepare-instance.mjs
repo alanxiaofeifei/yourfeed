@@ -5,6 +5,8 @@ import {dirname,resolve,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 
+export const HOSTED_CRON='*/15 * * * *';
+
 export function validateManifest(input){
  if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Invalid instance manifest');
  for(const key of ['instanceId','workerName','databaseName','controlWorker'])if(typeof input[key]!=='string'||!/^[a-z][a-z0-9-]{2,62}$/.test(input[key]))throw new Error('Invalid '+key);
@@ -16,7 +18,7 @@ export function validateManifest(input){
 export function prepareInstance(input){
  const manifest=validateManifest(input),instanceToken=randomBytes(32).toString('hex');
  return {manifest,
-  bindings:{name:manifest.workerName,vars:{HOSTING_MODE:'hosted',AUTH_MODE:'standalone',INSTANCE_ID:manifest.instanceId,AUTH_BASE_URL:manifest.origin,SECRET_NAMESPACE:'yourfeed:'+manifest.instanceId},d1_databases:[{binding:'DB',database_name:manifest.databaseName,database_id:manifest.databaseId,migrations_dir:'drizzle'}],services:[{binding:'HOSTED_CONTROL_SERVICE',service:manifest.controlWorker}]},
+  bindings:{name:manifest.workerName,triggers:{crons:[HOSTED_CRON]},vars:{HOSTING_MODE:'hosted',AUTH_MODE:'standalone',INSTANCE_ID:manifest.instanceId,AUTH_BASE_URL:manifest.origin,SECRET_NAMESPACE:'yourfeed:'+manifest.instanceId,BACKGROUND_SCHEDULE_CONFIGURED:'true'},d1_databases:[{binding:'DB',database_name:manifest.databaseName,database_id:manifest.databaseId,migrations_dir:'drizzle'}],services:[{binding:'HOSTED_CONTROL_SERVICE',service:manifest.controlWorker}]},
   secrets:{APP_ENCRYPTION_KEY:randomBytes(32).toString('hex'),AUTH_SECRET:randomBytes(32).toString('hex'),HOSTED_INSTANCE_TOKEN:instanceToken},
   register:{operation:'register',instanceId:manifest.instanceId,origin:manifest.origin,databaseId:manifest.databaseId,instanceToken},
   marker:`-- Apply ONLY to the verified empty tenant DB after ALL core migrations.\n-- No existing data or identity is overwritten. No marker means admission stays locked.\nINSERT INTO meta(key,value) SELECT 'hosted:instance','${manifest.instanceId}' WHERE ${['content','sources','settings','feedback','reservations','analysis_cache','content_sources','content_aliases','content_search','auth_user','auth_session','auth_account','auth_verification','auth_rate'].map(table=>'NOT EXISTS(SELECT 1 FROM '+table+')').join(' AND ')} AND NOT EXISTS(SELECT 1 FROM meta WHERE key<>'seeded-v1');\n`
