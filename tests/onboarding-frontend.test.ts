@@ -33,6 +33,25 @@ describe('malformed tour responses fail closed',()=>{
  });
 });
 
+describe('observed spotlight and isolated tour rendering',()=>{
+ const spotlight=readFileSync(new URL('../app/components/onboarding/Spotlight.tsx',import.meta.url),'utf8');
+ const tour=readFileSync(new URL('../app/components/onboarding/Tour.tsx',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../app/components/onboarding/Tour.css',import.meta.url),'utf8');
+ it('isolates progress state from the feed and keeps the panel inside its destination focus scope',()=>{
+  expect(tour).toContain('function TourController');expect(tour).toContain('createPortal(<TourPresence>{tour.region}</TourPresence>,slot)');
+  expect(tour).toContain('aria-live="polite" aria-atomic="true"');expect(tour).toContain('focus({preventScroll:true})');
+ });
+ it('batches measurement without polling and disconnects every observer',()=>{
+  expect(spotlight).toContain('if(!frame)frame=requestAnimationFrame(measure)');
+  expect(spotlight).toContain('new ResizeObserver');expect(spotlight).not.toMatch(/setInterval|setTimeout|fetch\(/);
+  expect(spotlight).toContain('cancelAnimationFrame(frame)');expect(spotlight).toContain('resize.disconnect()');expect(spotlight).toContain('mutations.disconnect()');
+ });
+ it('makes dimming pointer-transparent and disables movement for reduced motion',()=>{
+  expect(css).toContain('pointer-events:none');expect(css).toContain('@media(prefers-reduced-motion:reduce)');expect(css).toContain('transform:none!important');
+  expect(spotlight).toContain("behavior:reduced.matches?'auto':'smooth'");
+ });
+});
+
 describe('frontend tour safety boundaries', () => {
  const tour=readFileSync(new URL('../app/components/onboarding/Tour.tsx',import.meta.url),'utf8');
  const home=readFileSync(new URL('../app/page.tsx',import.meta.url),'utf8');
@@ -54,6 +73,6 @@ describe('frontend tour safety boundaries', () => {
  it('retains forms until explicit guarded destination navigation',()=>{
   expect(home).toContain('leavesForm&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm)');
   expect(tour).toContain('onNavigate(target)');
-  expect(tour).toContain("window.matchMedia('(prefers-reduced-motion: reduce)')");
+  expect(readFileSync(new URL('../app/components/onboarding/Spotlight.tsx',import.meta.url),'utf8')).toContain("window.matchMedia('(prefers-reduced-motion: reduce)')");
  });
 });

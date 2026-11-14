@@ -1,5 +1,9 @@
 // Vietnamese interface translations. Original source content is not translated.
 export const vietnameseMessages: Record<string, string> = {
+  "我的账户": "Tài khoản của tôi",
+  "私人阅读空间": "Không gian đọc riêng tư",
+  "账户与登录管理请使用右上角菜单。": "Quản lý tài khoản và đăng nhập bằng menu ở góc trên bên phải.",
+  "随时继续或重新查看配置引导，不会清空你的设置。": "Tiếp tục hoặc xem lại hướng dẫn thiết lập bất cứ lúc nào mà không xóa cài đặt của bạn.",
   "已登录": "Đã đăng nhập",
   "退出所有设备的登录会话，包括当前设备？": "Đăng xuất khỏi mọi thiết bị, kể cả thiết bị này?",
   "操作未完成，请重新验证后再试。": "Thao tác thất bại. Hãy xác minh lại danh tính rồi thử lại.",
@@ -73,7 +77,6 @@ export const vietnameseMessages: Record<string, string> = {
   "免费层可用 Flash / Flash-Lite 模型，按项目限速；免费层数据可能被用于改进 Google 产品。Gemini 4 不在免费层。": "Gói miễn phí áp dụng cho các mô hình Flash / Flash-Lite với giới hạn tốc độ theo dự án; dữ liệu có thể được dùng để cải thiện sản phẩm Google. Gemini 4 không thuộc gói miễn phí.",
   "免费计划约 30 次/分钟、1,000 次/天（以控制台 Limits 为准）。": "Gói miễn phí khoảng 30 yêu cầu/phút, 1.000 yêu cầu/ngày (tham khảo Limits trong console).",
   "加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。": "Miễn phí cho phát triển với NVIDIA Developer Program; không cần phương thức thanh toán, có hạn mức và giới hạn tốc độ. Nhấp \"Get API Key\" trên trang mô hình.",
-  "2026-11-14 核验：API 访问需验证支付方式；一次性 5 美元试用额度 30 天后到期，无永久免费层。添加银行卡不扣费，主动购买额外额度才付费；请检查控制台限额。": "Xác minh 2026-11-14: truy cập API cần phương thức thanh toán đã xác minh; tín dụng dùng thử 5 USD cấp một lần hết hạn sau 30 ngày, không có bậc miễn phí vĩnh viễn. Thêm thẻ không bị tính phí, chỉ mua thêm tín dụng mới trả tiền; kiểm tra hạn mức trên bảng điều khiển.",
   "OpenRouter 以 :free 结尾的模型 ID 可免费使用。": "Các mô hình OpenRouter có ID kết thúc bằng :free được sử dụng miễn phí.",
   "已配置": "Đã cấu hình",
   "尚未配置": "Chưa cấu hình",

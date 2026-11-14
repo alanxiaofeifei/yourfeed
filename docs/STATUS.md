@@ -1,6 +1,27 @@
 # 当前项目状态
 
-更新时间：2026-11-14T22:10:00+08:00
+更新时间：2026-11-14（Alan 预览反馈，本地检查点；未发布）
+
+## PR #8 Cerebras 移除决定（2026-11-14，本地）
+- Alan 决定：Cerebras 需要支付方式验证，从四语首次使用引导（含步骤、官方链接、说明与费用警告中的点名）及推荐／免费层亮点中移除，取代下方旧版 Cerebras 引导说明。Google AI Studio、Groq 和 NVIDIA 的现有说明保留。
+- 最小兼容方案：完整预设选择器仍将 Cerebras 作为普通、非推荐选项显示；移除其 `freeTier` 元数据和旧试用宣传翻译，不隐藏或改写已有用户配置。保留 provider 类型、官方 endpoint/model、密钥解析、设置读写、费用估算／预算预留及连接测试，不做 schema、鉴权或隔离改动。零估算不保护上游预算的四语通用警告继续显示。
+- 回归：四语引导和文档断言 Cerebras 完全缺席；设置渲染无免费层标签，保存的 Cerebras 配置／加密密钥、切换恢复、估算与用量限制、mock endpoint/probe 及浏览器连接测试继续覆盖；不调用真实服务商。
+- 验证：`npm test -- --maxWorkers=1 --no-file-parallelism` **720/720（62 files）**、`npm run typecheck`、`YOURFEED_BUILD_PROFILE=cloudflare npm run build`、`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- --workers=1` **26/26** 均 exit 0。新增四语浏览器回归确认引导无 Cerebras，已保存预设仍可加载并触发 mock 连接测试；未调用真实 API。构建仍有已知 lucide / dynamic-import 提示及只读 HOME 的 Wrangler 日志 EROFS（不影响产物与退出码）。Node 24.22.1 / npm 11.21.1、现有 package-lock；最终 diff 已审阅。仓库外日志：`unit-cerebras-final.log`、`typecheck-cerebras-final.log`、`build-cerebras-final.log`、`e2e-cerebras-final.log`。
+- 同步：沿用 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，保留此前未提交反馈改动；本轮不提交、不 push、不部署，不读取私密目录。PR 仍为 OPEN，线上与 CI 验证不在本次本地结果范围。
+
+## PR #8 预览反馈检查点
+- 范围：六项反馈已实现；分支仍为 `feat/first-use-onboarding`。没有鉴权服务、实例隔离、权限、schema 或新增设置功能改动；未读取私密目录，未 push/deploy/执行远程 Wrangler。
+- 性能根因：`useTour` 在 Home 内持有进度、busy、目标缺失状态，步骤更新重渲染整页。改为子控制器持有状态，并 portal 到普通文档流的目标槽位（来源弹窗内仍在原 focus scope）。新 spotlight 用 rAF 合并 DOM/scroll/resize 通知、ResizeObserver 跟踪尺寸，几何样式不进 React state，无轮询。原有步骤 PATCH 已返回证据，未发现每步 GET 或自动 provider 请求；不将未观测到的 layout thrash 当根因。
+- 相同本地 synthetic React 开发 harness，连续五次 Next（含 Playwright 点击/断言开销），前→后：Profiler 子树 commits **16→11**（每步 3.2→2.2），React 累计 render **155.8→8.0 ms**；平均步骤延迟 **73.0→65.3 ms**；long tasks **0→0**；onboarding **GET 0→0 / PATCH 5→5**。全页 getBoundingClientRect 计数 **2→6**，新增 spotlight 跟随目标是预期功能成本，不宣称减少；后测 30 次同步 resize 突发共 4 次全页几何读取（含现有站点 motion）。单轮方向性数据，不是生产设备保证。JSON：仓库外 `perf-before.json` / `perf-after.json`；复测命令见 first-use 文档。
+- 入口根因：此分支启动器原本就不按完成/退出状态隐藏；但 Home 单独一次 session 请求失败会静默保留空 identity，而账户菜单可独立重试，导致菜单已登录、启动器仍禁用。现在复用账户菜单确认的 identity 与重试；永久、突出的普通流首页工具栏不受新旧账号、cutoff 或状态限制。无法仅凭源码证明 Alan 那次历史登录的具体网络状况。
+- 视觉/无障碍：复用 YourFeed Editorial Motion v2 字体、颜色、hairlines、180/360ms easing；开/关和步骤揭示，目标轮廓/光晕与轻微 dim，dim `pointer-events:none`。手机不使用浮动提示盖住控件；目标平滑滚动，reduced-motion 无 transform/动画、即时滚动；标题聚焦、四语 aria-live、来源 dialog Tab 范围已回归。
+- 账户决策：右上角「我的账户」为唯一账户入口，身份在下拉内；左下角改为非交互隐私说明和入口指引，去除容易混淆的 profile 名称/头像，不承诺额外权限/加密语义。zh-CN/en/zh-TW/vi 新文案均完整。`docs/settings-proposals.md` 仅有七个价值/工作量/风险提案，未构建新功能。
+- 验证：`npm test -- --maxWorkers=1 --no-file-parallelism` **714/714**（62 files）、`npm run typecheck`、`YOURFEED_BUILD_PROFILE=cloudflare npm run build` 均 exit 0；构建产物完成，工具仍输出 lucide barrel / dynamic import 提示及只读 HOME 下 Wrangler 日志 EROFS 警告，不影响构建退出码。`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- --workers=1` **22/22**（含 1280×800 / 390×844、四状态退出后再次登录、session 失败重试、四语切换、spotlight 跟随/几何/可点击、reduced-motion、dialog Tab、手动来源表单的真实非零尺寸 spotlight 与账户整合）。初轮集成测试发现 portal 槽位交接被旧 ref 的 null 覆盖，已修复并全测；测试 retry 英文 selector 拼写也已修正。
+- 截图：`/workspace/yourfeed-onboarding-20261112/feedback-shots/` 的 `desktop-spotlight-zh-CN.png`、`mobile-spotlight-zh-CN.png`、`desktop-home-button-en.png`、`mobile-account-menu-zh-CN.png`、`reduced-motion.png`；均本地合成数据、无密钥值，已目视检查。
+- 未验证：真实账户第二次登录历史原因、真实设备/读屏/200% 缩放、邮件/OAuth/真实 provider 和 YouTube、PR CI/远程最新状态。运行 Node 24.22.1 / npm 11.21.1、现有 package-lock；工具沿用本项目已验证组合，实际可控模型/费用/上下文档位不可独立核实，未声称切换。
+- 同步：本轮改动全部保留本地且 **未暂存**；尝试本地 checkpoint 提交在 git add 阶段因 linked-worktree 的只读 index.lock 被 sandbox 拒绝（exit 128），未重试绕过；已确认 cached diff 为空。没有本地新提交/推送/合并/发布。本次检查点优先于下方旧预览验收和发布下一步。
+- **下一步：Grok 仅重新部署独立 preview，Alan 审阅；不部署生产或成员实例。**
+
 
 ## 当前目标
 - 完成 [Draft PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8) 的四语言（zh-CN / en / zh-TW / vi）可恢复首次使用引导，在独立非生产预览中供 Alan 审阅。计划原文在仓库外 `/workspace/yourfeed-onboarding-20261112/PLAN.md`；旧的待确认方案以此处确认决定和实际实现为准。

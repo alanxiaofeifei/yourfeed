@@ -1,5 +1,9 @@
 /** English interface messages. Keys remain stable across existing deployments. */
 export const englishMessages:Record<string,string> = {
+  "我的账户": "My account",
+  "私人阅读空间": "Private reading space",
+  "账户与登录管理请使用右上角菜单。": "Manage your account and sign-in from the top-right menu.",
+  "随时继续或重新查看配置引导，不会清空你的设置。": "Resume or review setup anytime, without clearing your settings.",
   "已登录": "Signed in",
   "退出所有设备的登录会话，包括当前设备？": "Sign out all devices, including this one?",
   "操作未完成，请重新验证后再试。": "The action failed. Reauthenticate and try again.",
@@ -73,7 +77,6 @@ export const englishMessages:Record<string,string> = {
   "免费层可用 Flash / Flash-Lite 模型，按项目限速；免费层数据可能被用于改进 Google 产品。Gemini 4 不在免费层。": "Free tier covers Flash / Flash-Lite models with per-project rate limits; free-tier data may be used to improve Google products. Gemini 4 is not on the free tier.",
   "免费计划约 30 次/分钟、1,000 次/天（以控制台 Limits 为准）。": "Free plan is about 30 requests/min and 1,000/day (see console Limits).",
   "加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。": "Free development access with the NVIDIA Developer Program; no payment method required, with quota and rate limits. Use \"Get API Key\" on a model page.",
-  "2026-11-14 核验：API 访问需验证支付方式；一次性 5 美元试用额度 30 天后到期，无永久免费层。添加银行卡不扣费，主动购买额外额度才付费；请检查控制台限额。": "Verified 2026-11-14: API access requires a verified payment method; one-time $5 trial credit expires after 30 days, with no permanent free tier. Adding a card does not charge you; only buying additional credits does. Check console limits.",
   "OpenRouter 以 :free 结尾的模型 ID 可免费使用。": "OpenRouter model IDs ending in :free are free to use.",
   "已配置": "Configured",
   "尚未配置": "Not configured",

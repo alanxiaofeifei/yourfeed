@@ -1,5 +1,9 @@
 /** Traditional Chinese with Taiwan terminology. Original content is never translated. */
 export const traditionalMessages:Record<string,string> = {
+  "我的账户": "我的帳戶",
+  "私人阅读空间": "私人閱讀空間",
+  "账户与登录管理请使用右上角菜单。": "帳戶與登入管理請使用右上角選單。",
+  "随时继续或重新查看配置引导，不会清空你的设置。": "隨時繼續或重新查看設定導覽，不會清空你的設定。",
   "已登录": "已登入",
   "退出所有设备的登录会话，包括当前设备？": "退出所有裝置的登入會話，包括目前裝置？",
   "操作未完成，请重新验证后再试。": "操作未完成，請重新驗證後再試。",
@@ -73,7 +77,6 @@ export const traditionalMessages:Record<string,string> = {
   "免费层可用 Flash / Flash-Lite 模型，按项目限速；免费层数据可能被用于改进 Google 产品。Gemini 4 不在免费层。": "免費層可用 Flash / Flash-Lite 模型，按專案限速；免費層資料可能被用於改進 Google 產品。Gemini 4 不在免費層。",
   "免费计划约 30 次/分钟、1,000 次/天（以控制台 Limits 为准）。": "免費計劃約 30 次/分鐘、1,000 次/天（以控制檯 Limits 為準）。",
   "加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。": "加入 NVIDIA Developer Program 後可免費用於開發測試，無需付款方式，有額度與速率限制。在模型頁點「Get API Key」取得。",
-  "2026-11-14 核验：API 访问需验证支付方式；一次性 5 美元试用额度 30 天后到期，无永久免费层。添加银行卡不扣费，主动购买额外额度才付费；请检查控制台限额。": "2026-11-14 核驗：API 存取需驗證付款方式；一次性 5 美元試用額度 30 天後到期，無永久免費方案。新增信用卡不扣款，主動購買額外額度才付費；請檢查主控台限制。",
   "OpenRouter 以 :free 结尾的模型 ID 可免费使用。": "OpenRouter 以 :free 結尾的模型 ID 可免費使用。",
   "已配置": "已配置",
   "尚未配置": "尚未配置",

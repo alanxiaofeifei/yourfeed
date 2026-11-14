@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { TOUR_STEP_IDS } from '../shared/onboarding';
 import {
@@ -11,7 +12,7 @@ function leaves(value: unknown, prefix = ''): Record<string, string> {
   return Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => Object.entries(leaves(entry, `${prefix}.${key}`))));
 }
 const placeholders = (text: string) => [...text.matchAll(/\{([a-zA-Z]+)\}/g)].map(match => match[1]).sort();
-const providers = ['gemini', 'groq', 'nvidia', 'cerebras', 'openai', 'deepseek', 'glm', 'custom'];
+const providers = ['gemini', 'groq', 'nvidia', 'openai', 'deepseek', 'glm', 'custom'];
 
 describe('typed onboarding copy', () => {
   it('has all four real locales without locale fallback', () => {
@@ -26,7 +27,7 @@ describe('typed onboarding copy', () => {
   // link labels (not just step bodies), so newly added copy cannot silently fall back.
   for (const locale of ['zh-TW', 'vi'] as const) {
     it(`${locale}: has no missing or English onboarding leaf outside the explicit neutral allowlist`, () => {
-      const brands = new Set(['Google AI Studio / Gemini', 'NVIDIA NIM', 'Cerebras', 'OpenAI API', 'DeepSeek API', 'GLM / BigModel']);
+      const brands = new Set(['Google AI Studio / Gemini', 'NVIDIA NIM', 'OpenAI API', 'DeepSeek API', 'GLM / BigModel']);
       const reference = leaves(ONBOARDING_MESSAGES.en);
       const translated = leaves(ONBOARDING_MESSAGES[locale]);
       expect(Object.keys(translated).sort()).toEqual(Object.keys(reference).sort());
@@ -91,13 +92,8 @@ describe('typed onboarding copy', () => {
       expect(messages.guides.youtube.steps.join(' ')).toContain('Worker');
       expect(messages.guides.ai.glm.steps.join(' ')).toContain('Coding Plan');
       expect(messages.guides.ai.custom.steps.join(' ')).toContain('HTTPS');
-      expect(messages.guides.ai.cerebras.summary).not.toMatch(/^Free\b|^免费\b|^免費\b|^Miễn phí\b/);
-      expect(messages.help.costWarning).toContain('NVIDIA/Cerebras');
       expect(messages.help.checkedAt).toContain('2026-11-12');
-      expect(messages.help.checkedAt).toContain('2026-11-14');
-      expect(messages.guides.ai.cerebras.steps[1]).toContain('2026-11-14');
-      expect(messages.guides.ai.cerebras.links.map(link => link.url)).toContain('https://inference-docs.cerebras.ai/console/account-billing.md');
-      expect(Object.keys(messages.guides.ai).slice(0, 4)).toEqual(['gemini', 'groq', 'nvidia', 'cerebras']);
+      expect(Object.keys(messages.guides.ai).slice(0, 3)).toEqual(['gemini', 'groq', 'nvidia']);
     });
 
     it(`${locale}: uses only official HTTPS allowlisted links with translated labels`, () => {
@@ -115,16 +111,30 @@ describe('typed onboarding copy', () => {
     });
   }
 
-  it('states the confirmed Cerebras trial and billing conditions plainly in every locale', () => {
-    const required = {
-      en: [/verified payment method/, /one-time \$5/, /30 days/, /no permanent free tier/, /Adding the card does not charge/],
-      zh: [/经验证的支付方式/, /一次性 5 美元/, /30 天/, /没有永久免费层/, /添加银行卡本身不扣费/],
-      'zh-TW': [/經驗證的付款方式/, /一次性 5 美元/, /30 天/, /沒有永久免費方案/, /新增信用卡本身不扣款/],
-      vi: [/thanh toán đã xác minh/, /một lần 5 USD/, /30 ngày/, /không có bậc miễn phí vĩnh viễn/, /Thêm thẻ không bị tính phí/],
-    };
-    for (const locale of TOUR_LOCALES) {
-      const text = ONBOARDING_MESSAGES[locale].guides.ai.cerebras.steps.join(' ');
-      for (const condition of required[locale]) expect(text, `${locale}: ${condition}`).toMatch(condition);
+  for (const locale of TOUR_LOCALES) {
+    it(`${locale}: omits Cerebras from all onboarding copy and links while retaining budget warnings`, () => {
+      const messages = ONBOARDING_MESSAGES[locale];
+      expect(JSON.stringify(messages)).not.toMatch(/cerebras/i);
+      const requiredWarnings = {
+        en: [/zero cost estimate is NOT budget protection/, /may be zero even if your provider account is paid/, /cannot guarantee or prevent provider charges/, /No automatic paid upgrade or provider switch/],
+        zh: [/零费用估算不等于预算保护/, /在服务商账号付费时，本站仍可能按零估算/, /无法保证或阻止上游扣费/, /不会自动升级付费或切换服务商/],
+        'zh-TW': [/零費用估算不等於預算保護/, /在服務商帳號付費時，本站仍可能按零估算/, /無法保證或阻止上游扣款/, /不會自動升級付費或切換服務商/],
+        vi: [/bằng không KHÔNG phải biện pháp bảo vệ ngân sách/, /bằng không dù tài khoản nhà cung cấp đang trả phí/, /không bảo đảm hoặc ngăn nhà cung cấp tính phí/, /Không tự nâng cấp trả phí hoặc đổi nhà cung cấp/],
+      };
+      for (const warning of requiredWarnings[locale]) expect(messages.help.costWarning).toMatch(warning);
+    });
+  }
+
+  it('omits Cerebras from onboarding source, official hosts and the first-use guide', () => {
+    const source = readFileSync(new URL('../shared/onboarding-messages.ts', import.meta.url), 'utf8');
+    const doc = readFileSync(new URL('../docs/first-use-onboarding.md', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/cerebras/i);
+    expect(OFFICIAL_ONBOARDING_HOSTS.join(' ')).not.toMatch(/cerebras/i);
+    expect(doc).not.toMatch(/cerebras/i);
+    expect(doc).toContain('A zero estimated rate is not budget protection.');
+    expect(doc).toContain('cannot prevent an upstream bill');
+    for (const host of ['cloud.cerebras.ai', 'inference-docs.cerebras.ai', 'www.cerebras.ai']) {
+      expect(isOfficialOnboardingUrl(`https://${host}/`), host).toBe(false);
     }
   });
 

@@ -1,0 +1,5 @@
+/* A permanent, in-flow entry: account state and tour eligibility never hide it. */
+.home-guide-entry{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;min-width:0;margin-bottom:20px;padding:16px 18px;border:1px solid color-mix(in srgb,var(--amber) 40%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--amber) 5%,var(--surface))}
+.home-guide-entry>.tour-launcher{flex:0 0 auto;margin:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.home-guide-entry>p{flex:1 1 230px;min-width:0;margin:0;color:var(--muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+@media(max-width:650px){.home-guide-entry{padding:12px;gap:10px}.home-guide-entry>.tour-launcher{min-height:44px}.home-guide-entry>p{flex-basis:100%;font-size:11px}}
