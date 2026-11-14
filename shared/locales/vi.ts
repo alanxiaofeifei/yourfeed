@@ -73,7 +73,7 @@ export const vietnameseMessages: Record<string, string> = {
   "免费层可用 Flash / Flash-Lite 模型，按项目限速；免费层数据可能被用于改进 Google 产品。Gemini 4 不在免费层。": "Gói miễn phí áp dụng cho các mô hình Flash / Flash-Lite với giới hạn tốc độ theo dự án; dữ liệu có thể được dùng để cải thiện sản phẩm Google. Gemini 4 không thuộc gói miễn phí.",
   "免费计划约 30 次/分钟、1,000 次/天（以控制台 Limits 为准）。": "Gói miễn phí khoảng 30 yêu cầu/phút, 1.000 yêu cầu/ngày (tham khảo Limits trong console).",
   "加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。": "Miễn phí cho phát triển với NVIDIA Developer Program; không cần phương thức thanh toán, có hạn mức và giới hạn tốc độ. Nhấp \"Get API Key\" trên trang mô hình.",
-  "使用前请查看当前试用资格、支付方式要求、价格与限额，以控制台为准。": "Trước khi dùng, kiểm tra điều kiện dùng thử, yêu cầu phương thức thanh toán, giá và hạn mức hiện tại trong bảng điều khiển.",
+  "2026-11-14 核验：API 访问需验证支付方式；一次性 5 美元试用额度 30 天后到期，无永久免费层。添加银行卡不扣费，主动购买额外额度才付费；请检查控制台限额。": "Xác minh 2026-11-14: truy cập API cần phương thức thanh toán đã xác minh; tín dụng dùng thử 5 USD cấp một lần hết hạn sau 30 ngày, không có bậc miễn phí vĩnh viễn. Thêm thẻ không bị tính phí, chỉ mua thêm tín dụng mới trả tiền; kiểm tra hạn mức trên bảng điều khiển.",
   "OpenRouter 以 :free 结尾的模型 ID 可免费使用。": "Các mô hình OpenRouter có ID kết thúc bằng :free được sử dụng miễn phí.",
   "已配置": "Đã cấu hình",
   "尚未配置": "Chưa cấu hình",

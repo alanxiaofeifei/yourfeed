@@ -21,6 +21,26 @@ describe('typed onboarding copy', () => {
     expect(new Set(TOUR_LOCALES.map(locale => getOnboardingMessages(locale))).size).toBe(4);
   });
 
+  // Only exact brand names, official URLs and punctuation-only interpolation
+  // templates may equal English. Check every leaf, including YouTube help and
+  // link labels (not just step bodies), so newly added copy cannot silently fall back.
+  for (const locale of ['zh-TW', 'vi'] as const) {
+    it(`${locale}: has no missing or English onboarding leaf outside the explicit neutral allowlist`, () => {
+      const brands = new Set(['Google AI Studio / Gemini', 'NVIDIA NIM', 'Cerebras', 'OpenAI API', 'DeepSeek API', 'GLM / BigModel']);
+      const reference = leaves(ONBOARDING_MESSAGES.en);
+      const translated = leaves(ONBOARDING_MESSAGES[locale]);
+      expect(Object.keys(translated).sort()).toEqual(Object.keys(reference).sort());
+      for (const [path, english] of Object.entries(reference)) {
+        const text = translated[path];
+        expect(text?.trim(), path).toBeTruthy();
+        const neutral = (path.endsWith('.title') && brands.has(english))
+          || (path.endsWith('.url') && isOfficialOnboardingUrl(english))
+          || !english.replace(/\{[a-zA-Z]+\}|[\s:：/—-]/g, '');
+        if (!neutral) expect(text, `${locale}${path}`).not.toBe(english);
+      }
+    });
+  }
+
   for (const locale of TOUR_LOCALES) {
     const messages = ONBOARDING_MESSAGES[locale];
     it(`${locale}: covers every stable step, UI key, guide and interpolation`, () => {
@@ -74,6 +94,10 @@ describe('typed onboarding copy', () => {
       expect(messages.guides.ai.cerebras.summary).not.toMatch(/^Free\b|^免费\b|^免費\b|^Miễn phí\b/);
       expect(messages.help.costWarning).toContain('NVIDIA/Cerebras');
       expect(messages.help.checkedAt).toContain('2026-11-12');
+      expect(messages.help.checkedAt).toContain('2026-11-14');
+      expect(messages.guides.ai.cerebras.steps[1]).toContain('2026-11-14');
+      expect(messages.guides.ai.cerebras.links.map(link => link.url)).toContain('https://inference-docs.cerebras.ai/console/account-billing.md');
+      expect(Object.keys(messages.guides.ai).slice(0, 4)).toEqual(['gemini', 'groq', 'nvidia', 'cerebras']);
     });
 
     it(`${locale}: uses only official HTTPS allowlisted links with translated labels`, () => {
@@ -90,6 +114,19 @@ describe('typed onboarding copy', () => {
       }
     });
   }
+
+  it('states the confirmed Cerebras trial and billing conditions plainly in every locale', () => {
+    const required = {
+      en: [/verified payment method/, /one-time \$5/, /30 days/, /no permanent free tier/, /Adding the card does not charge/],
+      zh: [/经验证的支付方式/, /一次性 5 美元/, /30 天/, /没有永久免费层/, /添加银行卡本身不扣费/],
+      'zh-TW': [/經驗證的付款方式/, /一次性 5 美元/, /30 天/, /沒有永久免費方案/, /新增信用卡本身不扣款/],
+      vi: [/thanh toán đã xác minh/, /một lần 5 USD/, /30 ngày/, /không có bậc miễn phí vĩnh viễn/, /Thêm thẻ không bị tính phí/],
+    };
+    for (const locale of TOUR_LOCALES) {
+      const text = ONBOARDING_MESSAGES[locale].guides.ai.cerebras.steps.join(' ');
+      for (const condition of required[locale]) expect(text, `${locale}: ${condition}`).toMatch(condition);
+    }
+  });
 
   it('rejects insecure, injected, lookalike and non-official help URLs', () => {
     for (const url of ['http://console.groq.com/keys', 'https://console.groq.com.evil.test/keys', 'https://evilconsole.groq.com/', 'javascript:alert(1)', 'https://console.groq.com@evil.test/', 'https://user:secret@console.groq.com/keys', 'https://console.groq.com:8443/', 'https://localhost/', '/api/keys', 'not a URL']) {

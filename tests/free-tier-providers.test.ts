@@ -207,8 +207,8 @@ describe('UI component rendering: provider key note and free-tier text', () => {
     [
       'cerebras',
       'https://cloud.cerebras.ai',
-      '使用前请查看当前试用资格、支付方式要求、价格与限额，以控制台为准。',
-      'Check current trial eligibility, payment-method requirements, pricing and limits in the console before use.',
+      '2026-11-14 核验：API 访问需验证支付方式；一次性 5 美元试用额度 30 天后到期，无永久免费层。添加银行卡不扣费，主动购买额外额度才付费；请检查控制台限额。',
+      'Verified 2026-11-14: API access requires a verified payment method; one-time $5 trial credit expires after 30 days, with no permanent free tier. Adding a card does not charge you; only buying additional credits does. Check console limits.',
     ],
   ] as const)(
     'renders key note for %s with correct link and free-tier text in zh and en',
@@ -230,6 +230,16 @@ describe('UI component rendering: provider key note and free-tier text', () => {
       expect(enHtml).toContain(freeTierEn.replace(/"/g, '&quot;'));
     },
   );
+
+  it.each(['zh-TW', 'vi'] as const)('translates the full Cerebras payment/trial note in %s', language => {
+    const note = PROVIDER_METADATA.cerebras.freeTier!;
+    const localized = translate(note.zh, language, note.en);
+    expect(localized).not.toBe(note.en);
+    expect(localized).not.toBe(note.zh);
+    expect(localized).toContain('2026-11-14');
+    expect(localized).toContain('30');
+    expect(renderSettings('cerebras', language)).toContain(localized);
+  });
 
   it.each(['zh', 'zh-TW', 'en', 'vi'] as const)('always warns that zero rates are not upstream budget protection in %s', language => {
     const warning = getOnboardingMessages(language).help.costWarning;
