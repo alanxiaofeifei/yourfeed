@@ -1,5 +1,14 @@
 # 当前项目状态
 
+## Phase A / Issue #11（issues #11–#16 第一阶段，本地检查点）
+- 目标：用轻量 popover + 单 spotlight + 箭头替换旧内联 tour；[ADR 0001](adr/0001-lightweight-onboarding-tour.md) 选独立实现的 driver.js-like MIT 方案，无新增依赖。分支 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)。本节优先于下方旧反馈实现说明。
+- 根因证据：真实 Cloudflare 构建经本地 Wrangler 提供资源，trusted click→两次 rAF 的可绘制帧代理（非物理呈现/INP）；旧 Next/Skip/Back 在 PATCH 完成后才变化。明确模拟 PATCH +250ms 时 36/36 导航请求先完成才呈现；Exit 独立受保留子树约180ms退出期拖慢。不是把开发 Profiler 数字当生产证据，也未声称测到了 Alan 线上真实 RTT。
+- 实现：子控制器立即乐观切步，串行后台 CAS 保留每个 viewed/skipped 操作；确认响应只更新证据/基线，失败回滚并显示错误，409 重读且不覆盖其他标签页退出。删除 retained-exit 路径。浮层翻转/视口约束、手机紧凑 sheet、dialog 内 focus scope、目标透明高亮与 transform 箭头、四语短文+完整说明 disclosure、Esc/左右键/Tab/稍后继续；modal 为 sheet 保留独立滚动区域。无 API/schema/鉴权/隔离/权限改变。
+- 测量文件：仓库外 `perf-A-before.json`、`perf-A-after.json`；可复测步骤见 [e2e/PERFORMANCE.md](../e2e/PERFORMANCE.md)。每设备/网络场景48次（Next/Skip/Back/Exit各12）；手机390×844/CDP4×，桌面1280×800。
+- 运行边界：仅本地合成 API/数据、真实 dist 资源；本地 Wrangler 使用安装 workerd 支持的 compatibility-date 与仅测试的 AUTH_MODE:sites 页面渲染覆盖，不验证 standalone 登录。未读取私密目录、未 push/deploy/远程 Wrangler。
+- 当前下一步：最终几何修正已 Cloudflare build exit0；正在复跑完整 e2e、同一性能 harness 与四张 synthetic 截图。完成前不将初轮 after 数字当最终验收。
+
+
 更新时间：2026-11-14（Alan 预览反馈，本地检查点；未发布）
 
 ## PR #8 Cerebras 移除决定（2026-11-14，本地）
