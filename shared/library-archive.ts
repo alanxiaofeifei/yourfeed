@@ -18,7 +18,7 @@ export function archiveSourceLocator(source:Source):string{
 /** Export only the known reading fields, never a server response spread. */
 export function archiveFiles(pages:ArchivePage[],translate:ExportTranslate,origin?:string):ArchiveFile[]{
  const items=[...new Map(pages.flatMap(page=>page.items).map(item=>[item.id,readingSnapshot(item)])).values()];
- const first=pages[0],feedback:Record<string,Feedback>={};for(const page of pages)for(const [id,row]of Object.entries(page.feedback||{})){const flags:Feedback={};for(const flag of ['liked','saved','read','dismissed'] as const)if(typeof row[flag]==='boolean')flags[flag]=row[flag];feedback[id]=flags;}
+ const first=pages[0],feedback:Record<string,Feedback>={};for(const page of pages)for(const [id,row]of Object.entries(page.feedback||{})){const flags:Feedback={};for(const flag of ['liked','saved','read','dismissed','disliked'] as const)if(typeof row[flag]==='boolean')flags[flag]=row[flag];if(row.updatedAt&&Number.isFinite(Date.parse(row.updatedAt)))flags.updatedAt=row.updatedAt;feedback[id]=flags;}
  const sources=(first?.sources||[]).map(source=>({id:source.id,name:source.name,platform:source.platform,locator:archiveSourceLocator(source),topics:source.topics,enabled:source.enabled}));
  const inputProfile=first?.profile&&typeof first.profile==='object'?first.profile as Record<string,unknown>:{};
  const profile:Record<string,unknown>={};

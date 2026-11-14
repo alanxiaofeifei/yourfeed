@@ -1,5 +1,13 @@
 /** English interface messages. Keys remain stable across existing deployments. */
 export const englishMessages:Record<string,string> = {
+  "不喜欢": "Not interested",
+  "不喜欢的内容": "Not interested history",
+  "撤销不喜欢": "Undo not interested",
+  "已减少此类推荐": "Fewer items like this",
+  "撤销": "Undo",
+  "不喜欢的内容会保留在这里，可随时撤销。": "Review items you marked not interested and undo at any time.",
+  "喜欢和不喜欢仅在本实例按用户免费排序，不调用 AI。AI 阅读笔记或画像建议使用你自己的 Key，由服务商计费；未配置时尝试有限、尽力而为的免费公共通道。": "Likes and dislikes rank items locally in this instance, free for each user, without AI calls. AI notes or profile advice use your own key and your provider bills you; without a key, a limited, best-effort free public channel is tried.",
+
   "我的账户": "My account",
   "私人阅读空间": "Private reading space",
   "账户与登录管理请使用右上角菜单。": "Manage your account and sign-in from the top-right menu.",

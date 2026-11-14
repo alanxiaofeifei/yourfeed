@@ -34,7 +34,7 @@ import {
 import {cacheReadContent,readCachedContent} from '../shared/browser-cache';
 import { createProfile, type UserProfile } from '../shared/profile';
 import type { ContentItem, Feedback, FeedResponse, Kind, Mode, Provider, ProviderConfig, Source, Topic, Usage } from '../shared/types';
-type View = 'feed' | 'saved' | 'liked' | 'read' | 'sources' | 'settings';
+type View = 'feed' | 'saved' | 'liked' | 'read' | 'disliked' | 'sources' | 'settings';
 type FeedPage=FeedResponse&{shortQueryLimited?:boolean;nextCursor?:number|string|null;exhausted?:boolean;seed?:string;asOf?:string};
 type RotationContext={scope:string;seed:string;excludeIds:string[];asOf?:string};
 function rememberFeedIds(previous:string[],next:string[]){const added=[...new Set(next)];const ids=new Set(added);return [...previous.filter(id=>!ids.has(id)),...added].slice(-200);}
@@ -115,6 +115,13 @@ export default function Home() {
     const [syncing, setSyncing] = useState(false);
     const [syncText, setSyncText] = useState('');
     const [toast, setToast] = useState('');
+    const [dislikeToast,setDislikeToast]=useState<{item:ContentItem;index:number;scope:string;token:number}|null>(null);
+    const feedbackQueues=useRef(new Map<string,Promise<unknown>>());
+    const feedbackVersions=useRef(new Map<string,number>());
+    const optimisticFeedback=useRef(new Map<string,Feedback>());
+    const currentUser=useRef(sessionUserId);currentUser.current=sessionUserId;
+    const itemsRef=useRef(items);itemsRef.current=items;
+
     const [importing, setImporting] = useState(false);
     const [importUrl, setImportUrl] = useState('');
     const [importBusy, setImportBusy] = useState(false);
@@ -133,6 +140,7 @@ export default function Home() {
     const skipAutomaticFeedWork=useRef(false);
     const feedScope=JSON.stringify([view,mode,kind,search,language]);
     const currentFeedScope=useRef(feedScope);currentFeedScope.current=feedScope;
+    const rankingCost=t('喜欢和不喜欢仅在本实例按用户免费排序，不调用 AI。AI 阅读笔记或画像建议使用你自己的 Key，由服务商计费；未配置时尝试有限、尽力而为的免费公共通道。');
     const notify = useCallback((value: string) => setToast(value), []);
     const [retentionWarning,setRetentionWarning]=useState(false);
     useEffect(()=>{const abort=new AbortController();fetch('/api/storage',{signal:abort.signal,cache:'no-store'}).then(async r=>r.ok?r.json():null).then((status:any)=>{if(status?.enabled)setRetentionWarning(status.expiringCount>0||status.expiredCount>0);}).catch(()=>{});void api('/api/maintenance',post({})).catch(()=>{});return()=>abort.abort();},[]);
@@ -146,6 +154,7 @@ export default function Home() {
         window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
     }, [notify, t]);
     useEffect(() => { active.current = true; return () => { active.current = false;feedAbort.current?.abort();latestRequest.current++; }; }, []);
+    useEffect(()=>{setDislikeToast(null);optimisticFeedback.current.clear();feedbackVersions.current.clear();},[sessionUserId]);
     useEffect(() => { if (!toast)
         return; const id = setTimeout(() => setToast(''), 5000); return () => clearTimeout(id); }, [toast]);
     useEffect(() => { const id = setTimeout(() => setSearch(query), 250); return () => clearTimeout(id); }, [query]);
@@ -157,14 +166,14 @@ export default function Home() {
         setSettings(result[1].value); if (result[2].status === 'fulfilled')
         setUsage(result[2].value); if (result[3].status === 'fulfilled')
         setProfile(result[3].value); setSidebarReadyFor(result[0].status==='fulfilled'&&result[1].status==='fulfilled'&&result[3].status==='fulfilled'?sessionUserId:''); void tour.refresh(); }, [tour.refresh,sessionUserId]);
-    const loadFeed = useCallback(async (append = false) => {
+    const loadFeed = useCallback(async (append = false, retain = false) => {
         if(append&&feedBusy.current)return;
         const requestId=++latestRequest.current;
         feedAbort.current?.abort();const controller=new AbortController();feedAbort.current=controller;feedBusy.current=true;
         if(!append)setShuffling(false);
         append?setLoadingMore(true):setLoading(true);setError('');
         try{
-            const filter=view==='saved'||view==='liked'||view==='read'?view:'all';
+            const filter=view==='saved'||view==='liked'||view==='read'||view==='disliked'?view:'all';
             const offset=append?(cursor||0):0;
             const useLibrary=filter!=='all'||!!search;
             const context=!useLibrary&&view==='feed'&&rotation.current?.scope===feedScope?rotation.current:null;
@@ -172,9 +181,10 @@ export default function Home() {
                 ?await api<FeedPage>('/api/feed/batch',{...post({mode,type:kind,filter:'all',q:search.slice(0,200),cursor:Number(offset),seed:context.seed,excludeIds:context.excludeIds,...(context.asOf?{asOf:context.asOf}:{})}),signal:controller.signal})
                 :await api<FeedPage>(`/api/feed?mode=${mode}&type=${kind}&filter=${filter}&cursor=${offset}&q=${encodeURIComponent(search)}`,{signal:controller.signal});
             if(!active.current||requestId!==latestRequest.current||feedScope!==currentFeedScope.current)return;
-            setItems(previous=>append?[...previous,...data.items.filter(item=>!previous.some(old=>old.id===item.id))]:data.items);
+            const visible=data.items.map(item=>({...item,...optimisticFeedback.current.get(item.id)})).filter(item=>view==='disliked'?item.disliked||item.dismissed:!item.disliked&&!item.dismissed);
+            setItems(previous=>append?[...previous,...visible.filter(item=>!previous.some(old=>old.id===item.id))]:retain?[...visible,...previous.filter(item=>!visible.some(fresh=>fresh.id===item.id)&&!optimisticFeedback.current.get(item.id)?.disliked)]:visible);
             recentShown.current={scope:feedScope,ids:rememberFeedIds(recentShown.current.scope===feedScope?recentShown.current.ids:[],data.items.map(item=>item.id))};
-            setShortQueryLimited(data.shortQueryLimited===true);setTotal(data.total);setCursor(data.nextCursor??null);setLastUpdated(data.lastUpdated);
+            setShortQueryLimited(data.shortQueryLimited===true);setTotal(data.total);if(!retain)setCursor(data.nextCursor??null);setLastUpdated(data.lastUpdated);
             if(context&&data.asOf)rotation.current={...context,asOf:data.asOf};
         }catch(cause){if(active.current&&requestId===latestRequest.current&&feedScope===currentFeedScope.current&&!controller.signal.aborted)setError((cause as Error).message);}
         finally{if(active.current&&requestId===latestRequest.current){feedBusy.current=false;setLoading(false);setLoadingMore(false);setShuffling(false);}}
@@ -289,19 +299,50 @@ export default function Home() {
     } })(); }, [loading, syncing, view, settings.enabled, settings.configured, settings.usingFreeAi, settings.provider, settings.model, settings.dailyLimit, loadSidebar, notify]);
     const switchSettingsTab=(next:typeof settingsTab)=>{if(next!==settingsTab&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return;if(next!==settingsTab)dirtyForm.current=false;setSettingsTab(next);};
     const navigate = (next: View) => { if(next!==view&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return;if(next!==view)dirtyForm.current=false;setView(next); setMobileNav(false); setQuery(''); setSearch(''); setSelected(null); };
-    const feedback = async (item: ContentItem, patch: Feedback) => { try {
-        await api('/api/feedback', post({ id: item.id, patch }));
-        setBriefingRevision(value => value + 1);
-        setItems(old => old.map(x => x.id === item.id ? { ...x, ...patch } : x).filter(x => !x.dismissed));
-        setSelected(old => old?.id === item.id ? { ...old, ...patch } : old);
-        if (patch.saved !== undefined)
-            notify(patch.saved ? t('已加入稍后看。') : t('已从稍后看移除。'));
-        if (patch.dismissed)
-            notify(t('会减少这类推荐。'));
-    }
-    catch (e) {
-        notify((e as Error).message);
-    } };
+    // Serial writes per item let Undo run before a slow dislike response without reversing order.
+    const feedback = async (item: ContentItem, patch: Feedback, restore?:{index:number;scope:string}) => {
+        const negative=patch.disliked!==undefined;
+        const scope=currentFeedScope.current,userId=sessionUserId;
+        const version=(feedbackVersions.current.get(item.id)||0)+1;
+        feedbackVersions.current.set(item.id,version);
+        const index=restore?.index??Math.max(0,itemsRef.current.findIndex(row=>row.id===item.id));
+        const wasPresent=itemsRef.current.some(row=>row.id===item.id);
+        const place=(rows:ContentItem[],value:ContentItem)=>{const next=rows.filter(row=>row.id!==value.id);next.splice(Math.min(index,next.length),0,value);return next;};
+        if(negative){
+            latestRequest.current++;feedAbort.current?.abort();feedBusy.current=false;setLoading(false);setShuffling(false);setLoadingMore(false);
+            optimisticFeedback.current.set(item.id,patch);
+            setItems(rows=>view==='disliked'?rows.filter(row=>row.id!==item.id):patch.disliked?rows.filter(row=>row.id!==item.id):place(rows,{...item,...patch}));
+            setSelected(old=>old?.id===item.id?null:old);selectionRequest.current++;
+            if(patch.disliked){setToast('');setDislikeToast({item,index,scope,token:Date.now()});}
+            else setDislikeToast(old=>old?.item.id===item.id?null:old);
+        }
+        const previous=feedbackQueues.current.get(item.id)||Promise.resolve();
+        const operation=previous.catch(()=>{}).then(()=>api<{feedback:Feedback}>('/api/feedback',post({id:item.id,patch})));
+        feedbackQueues.current.set(item.id,operation);
+        try {
+            const result=await operation;
+            if(!active.current||currentUser.current!==userId||feedbackVersions.current.get(item.id)!==version)return;
+            optimisticFeedback.current.delete(item.id);
+            setBriefingRevision(value=>value+1);
+            if(currentFeedScope.current===scope){
+                if(negative){
+                    await feedLoader.current(false,true);
+                    if(!patch.disliked&&view==='feed'&&restore?.scope===scope&&currentFeedScope.current===scope){
+                        setItems(rows=>place(rows,rows.find(row=>row.id===item.id)||{...item,...result.feedback}));
+                    }
+                }else{
+                    setItems(rows=>rows.map(row=>row.id===item.id?{...row,...result.feedback}:row));
+                    setSelected(old=>old?.id===item.id?{...old,...result.feedback}:old);
+                }
+            }
+            if(patch.saved!==undefined)notify(patch.saved?t('已加入稍后看。'):t('已从稍后看移除。'));
+        } catch(e) {
+            if(!active.current||currentUser.current!==userId||feedbackVersions.current.get(item.id)!==version)return;
+            optimisticFeedback.current.delete(item.id);
+            if(negative&&currentFeedScope.current===scope)setItems(rows=>wasPresent?place(rows,item):rows.filter(row=>row.id!==item.id));
+            setDislikeToast(old=>old?.item.id===item.id?null:old);notify((e as Error).message);
+        } finally {if(feedbackQueues.current.get(item.id)===operation)feedbackQueues.current.delete(item.id);}
+    };
     const blockSource = async (item: ContentItem) => { try {
         await api('/api/sources', { method: 'PATCH', body: JSON.stringify({ id: item.sourceId, blocked: true }) });
         setItems(old => old.filter(x => x.sourceId !== item.sourceId));
@@ -314,10 +355,10 @@ export default function Home() {
     } };
     const analyze = async (item: ContentItem) => { setAnalyzing(item.id); try {
         const result = await api<any>('/api/analyze', post({ id: item.id }));
-        const updated = result.item || (result.analysis ? { ...item, analysis: result.analysis } : null);
+        const updated = result.item || (result.analysis ? { analysis: result.analysis } : null);
         if (updated) {
-            setSelected(updated);
-            setItems(old => old.map(x => x.id === item.id ? updated : x));
+            setSelected(old=>old?.id===item.id?{...old,...updated}:old);
+            setItems(old => old.map(x => x.id === item.id ? {...x,...updated} : x));
             notify(t('AI 阅读已完成。'));
         }
         else {
@@ -349,7 +390,7 @@ export default function Home() {
     } };
     const sourceCount = sources.filter(x => x.enabled).length;
     const healthCount = sources.filter(x => x.enabled && !x.error && (x.status === 'ok' || !!x.lastSuccess)).length;
-    const pageTitle = view === 'saved' ? t('留给下一次的好内容') : view === 'liked' ? t('那些让你停下来看的内容') : view === 'read' ? t('好奇心走过的地方') : mode === 'rest' ? t('把时间，留给值得的内容。') : t('让好奇，走向真正的能力。');
+    const pageTitle = view === 'disliked' ? t('不喜欢的内容') : view === 'saved' ? t('留给下一次的好内容') : view === 'liked' ? t('那些让你停下来看的内容') : view === 'read' ? t('好奇心走过的地方') : mode === 'rest' ? t('把时间，留给值得的内容。') : t('让好奇，走向真正的能力。');
     const topbarRef = useEditorialScroll(!!selected || importing);
     const kindTabsRef = useGlidingTabs(kind, [language, view]);
     const feedToolbarRef = useStickyToolbarProgress();
@@ -376,7 +417,7 @@ export default function Home() {
       <button className="brand" onClick={() => navigate('feed')} aria-label={t("YourFeed \u9996\u9875")}><span className="brand-symbol">{branding.initial}<span>.</span></span><span>{branding.prefix}<span className="brand-light">{branding.suffix}</span><small>YOUR PERSONAL CORNER</small></span></button>
       <div className="sidebar-section-label">{t("\u4F60\u7684\u7A7A\u95F4")}</div>
       <nav className="primary-nav">
-        {([{ id: 'feed', label: t('为你发现'), icon: House }, { id: 'saved', label: t('稍后再看'), icon: Bookmark }, { id: 'liked', label: t('我喜欢的'), icon: Heart }, { id: 'read', label: t('阅读足迹'), icon: History }] as const).map(({ id, label, icon: Icon }) => <button key={id} onClick={() => navigate(id)} className={view === id ? 'active' : ''}><Icon size={18}/><span>{t(label)}</span>{view === id && <span className="nav-active-dot"/>}</button>)}
+        {([{ id: 'feed', label: t('为你发现'), icon: House }, { id: 'saved', label: t('稍后再看'), icon: Bookmark }, { id: 'liked', label: t('我喜欢的'), icon: Heart }, { id: 'read', label: t('阅读足迹'), icon: History }, { id: 'disliked', label: t('不喜欢的内容'), icon: EyeOff }] as const).map(({ id, label, icon: Icon }) => <button key={id} onClick={() => navigate(id)} className={view === id ? 'active' : ''}><Icon size={18}/><span>{t(label)}</span>{view === id && <span className="nav-active-dot"/>}</button>)}
       </nav>
       <div className="sidebar-section-label source-nav-label">{t("\u8BA9\u5185\u5BB9\u8DDF\u968F\u4F60")}</div>
       <nav className="primary-nav"><button data-tour="sources-nav" onClick={() => navigate('sources')} className={view === 'sources' ? 'active' : ''}><Rss size={18}/><span>{t("\u5185\u5BB9\u6765\u6E90")}</span><span className="nav-count">{sourceCount}</span></button><button onClick={() => navigate('settings')} className={view === 'settings' ? 'active' : ''}><SlidersHorizontal size={18}/><span>{t("\u504F\u597D\u4E0E AI \u8BBE\u7F6E")}</span></button></nav>
@@ -384,7 +425,7 @@ export default function Home() {
       <SidebarPrivacyNote />
     </aside>
     <div className="workspace">
-      <header className="topbar" ref={topbarRef} data-scrolled="false"><div className="breadcrumb"><button className="mobile-menu icon-button" onClick={() => setMobileNav(true)} aria-label={t("\u6253\u5F00\u5BFC\u822A")}><Menu size={20}/></button><span>{t("\u6211\u7684\u7A7A\u95F4")}</span><ChevronRight size={13}/><strong>{view === 'sources' ? t('内容来源') : view === 'settings' ? t('偏好与 AI 设置') : view === 'saved' ? t('稍后再看') : view === 'liked' ? t('我喜欢的') : view === 'read' ? t('阅读足迹') : t('为你发现')}</strong></div><div className="topbar-actions"><span data-tour="language"><LanguageToggle /></span><ThemeToggle /><AccountMenu onSessionChange={setSessionUserId} /><button className="small-button add-button" onClick={() => setImporting(true)}><Plus size={15}/><span>{t("\u6536\u85CF\u94FE\u63A5")}</span></button></div></header>
+      <header className="topbar" ref={topbarRef} data-scrolled="false"><div className="breadcrumb"><button className="mobile-menu icon-button" onClick={() => setMobileNav(true)} aria-label={t("\u6253\u5F00\u5BFC\u822A")}><Menu size={20}/></button><span>{t("\u6211\u7684\u7A7A\u95F4")}</span><ChevronRight size={13}/><strong>{view === 'sources' ? t('内容来源') : view === 'settings' ? t('偏好与 AI 设置') : view === 'saved' ? t('稍后再看') : view === 'liked' ? t('我喜欢的') : view === 'read' ? t('阅读足迹') : view === 'disliked' ? t('不喜欢的内容') : t('为你发现')}</strong></div><div className="topbar-actions"><span data-tour="language"><LanguageToggle /></span><ThemeToggle /><AccountMenu onSessionChange={setSessionUserId} /><button className="small-button add-button" onClick={() => setImporting(true)}><Plus size={15}/><span>{t("\u6536\u85CF\u94FE\u63A5")}</span></button></div></header>
       <main className={view === 'settings' || view === 'sources' ? 'main-area full-width' : 'main-area'}>
         {/* Always in normal flow, before every feed/settings state; never tied to auto-offer eligibility. */}
         <div className="tour-home"><div className="home-guide-entry" data-tour="home-guide-entry">{tour.launch}<PreferenceEntry disabled={!sessionUserId}/><PreferenceCards userId={sessionUserId} profile={profile} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onProfile={value=>{setProfile(value);void tour.refresh('profile-saved');}} reload={loadSidebar} onManual={()=>{navigateForTour({view:'settings',settingsTab:'profile',anchor:'profile-interests'});}}/><p>{t('随时继续或重新查看配置引导，不会清空你的设置。','Resume or review setup anytime, without clearing your settings.')}</p></div>{!sourceModal&&tour.region}</div>
@@ -406,6 +447,8 @@ export default function Home() {
             {view === 'feed' && !loading && !error && !items.length && !sources.length && <div hidden={tour.active}><ProfileOnboarding profile={profile} onDirtyChange={onDirtyChange} onChange={value=>{setProfile(value);void tour.refresh('profile-saved');}} notify={notify} onSources={() => navigate('sources')} onSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }}/></div>}
             <div className="feed-toolbar" ref={feedToolbarRef}><div className="kind-tabs" ref={kindTabsRef} data-gliding="true">{kinds.map(({ id, label }) => <button key={id} data-tab-id={id} className={kind === id ? 'selected' : ''} onClick={() => setKind(id)}>{t(label)}</button>)}</div><button className="filter-button" onClick={() => document.getElementById('feed-search')?.focus()} aria-label={t("\u641C\u7D22\u5185\u5BB9")}><Search size={17}/></button></div>
             <div className="search-row"><Search size={15}/><input data-tour="feed-search" id="feed-search" maxLength={200} placeholder={t("\u5728\u4F60\u7684\u5185\u5BB9\u82B1\u56ED\u91CC\u641C\u7D22\u2026")} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button className="icon-button" aria-label={t("\u6E05\u9664\u641C\u7D22")} onClick={() => setQuery('')}><X size={14}/></button>}<span className="result-count">{t(`${total} 条发现`)}</span></div>
+            {view==='feed'&&<p className="ranking-cost">{rankingCost}</p>}
+            {view==='disliked'&&<p className="ranking-cost">{t('不喜欢的内容会保留在这里，可随时撤销。')}</p>}
             {(syncing || analysisProgress) && <div className="sync-line"><Loader2 className="spin" size={13}/><span>{syncing ? syncText : analysisProgress}</span><span className="sync-line-fill"/></div>}
             {error && <div className="error-box"><p>{t(error)}</p><button className="small-button" onClick={() => void loadFeed()}>{t("\u91CD\u65B0\u52A0\u8F7D")}</button></div>}
             {loading && !items.length ? <div className="feed-grid">{[1, 2, 3, 4].map(i => <div className="skeleton-card" key={i}><div /><span /><span /><span /></div>)}</div> : items.length ? <><div className="section-kicker"><span>{view === 'feed' ? (mode === 'rest' ? t('今日的好奇心菜单') : t('值得投入的下一步')) : t('你的个人片库')}</span><span>{t("\u6309\u4E0E\u4F60\u7684\u5173\u8054\u63A8\u8350")}<Sparkles size={11}/></span></div>{(view==='liked'||view==='saved')&&<ArchiveActions scope={view==='liked'?'liked':view==='saved'?'saved':'all'} notify={notify}/>}<div className="feed-grid" ref={feedGridRef} data-shuffling={shuffling ? 'true' : 'false'}>{items.map((item, index) => <ContentCard key={item.id} item={item} index={index} onOpen={() => openContent(item)} onFeedback={patch => void feedback(item, patch)}/>)}</div>{cursor !== null && <button className="load-more" onClick={() => void loadFeed(true)} disabled={loadingMore||loading||shuffling||syncing}>{loadingMore ? <Loader2 size={15} className="spin"/> : <Plus size={15}/>}{t("\u518D\u53D1\u73B0\u4E00\u4E9B\u597D\u5185\u5BB9")}</button>}<div className="feed-end"><span />{t("\u597D\u5185\u5BB9\u4E0D\u5FC5\u4E00\u6B21\u770B\u5B8C")}<span /></div></> : !error && <div className="empty-state"><div className="empty-icon"><EditorialSignalMark variant="empty" mode={mode} syncing={syncing}/></div><h2>{query ? t('暂时没有找到匹配内容') : view === 'saved' ? t('给下次休息，留一点期待') : view === 'liked' ? t('喜欢的内容会在这里相遇') : view === 'read' ? t('你的阅读足迹从这里开始') : t('你的内容花园，正在生长')}</h2><p>{query ? t('换个关键词，或者看看其他类型。') : view === 'feed' ? t('点击更新连接已启用的内容源，或先收藏一条你喜欢的链接。') : t('在内容卡片上保存、点赞或标记读过，即可在这里找到。')}</p><button className="primary-button" onClick={() => view === 'feed' ? void refresh(true) : navigate('feed')}>{view === 'feed' ? <RefreshCw size={15}/> : <ArrowRight size={15}/>} {view === 'feed' ? t('更新我的内容库') : t('去发现好内容')}</button></div>}
@@ -423,13 +466,24 @@ export default function Home() {
             setSelected(null); }}><section className="reader-modal" role="dialog" aria-modal="true" aria-labelledby="reader-title"><button className="modal-close icon-button" aria-label={t("\u5173\u95ED\u5185\u5BB9")} onClick={() => setSelected(null)}><X size={21}/></button><div className="reader-source"><SourceMark platform={selected.platform}/>{selected.sourceName}<span>·</span>{timeAgo(selected.publishedAt, language)}</div><h2 id="reader-title">{selected.title}</h2><div className="reader-actions"><button className={`small-button ${selected.saved ? 'is-saved' : ''}`} onClick={() => void feedback(selected, { saved: !selected.saved })}><Bookmark size={15}/>{selected.saved ? t('已保存') : t('稍后再看')}</button><button className="small-button" onClick={() => void feedback(selected, { read: !selected.read })}><CheckCheck size={15}/>{selected.read ? t('已读过') : t('标记读过')}</button><a className="small-button" href={selected.url} target="_blank" rel="noopener noreferrer">{t("\u539F\u59CB\u6765\u6E90")}<ArrowUpRight size={14}/></a></div>
       <ContentActions item={selected}/>
       {selected.kind === 'video' && <VideoPlayer item={selected}/>}
-      {selected.analysis ? <div className="ai-reading"><div className="ai-label"><Sparkles size={15}/>{t("AI \u9605\u8BFB\u7B14\u8BB0")}<span>{selected.analysis.coverage === 'full_text' ? t('基于可读取正文') : selected.analysis.coverage === 'excerpt' ? t('基于原文摘要') : t('基于标题与元数据')}</span></div><ul>{selected.analysis.bullets.map((bullet, i) => <li key={i}>{bullet}</li>)}</ul><div className="relevance"><span>{t("\u4E0E\u4F60\u7684\u5173\u8054")}</span><p>{selected.analysis.relevance}</p></div><div className="analysis-references">{selected.analysis.references.map((url, i) => <a key={url} href={url} target="_blank" rel="noopener noreferrer">{t(`依据来源 ${i + 1}`)}<ArrowUpRight size={10}/></a>)}</div><span className="analysis-model">{selected.analysis.model}</span></div> : <button className="analyze-button" disabled={analyzing === selected.id} onClick={() => void analyze(selected)}>{analyzing === selected.id ? <Loader2 className="spin" size={17}/> : <Sparkles size={17}/>} {analyzing === selected.id ? t('正在阅读与整理…') : t('用 AI 帮我读一下')}<span>{t("\u63D0\u70BC\u8981\u70B9\u4E0E\u4E2A\u4EBA\u5173\u8054")}</span></button>}
-      <div className="original-label">{selected.kind === 'project' ? t('项目介绍') : t('来源内容')}<span>{t("\u4FDD\u7559\u539F\u59CB\u51FA\u5904")}</span></div><ContentCoverage item={selected} fromDevice={fromDevice}/><p className="reader-summary">{selected.summary}</p>{selected.body && <div className="reader-body">{textBody(selected.body)}</div>}<a href={selected.url} target="_blank" rel="noopener noreferrer" className="reader-origin">{t("\u5230\u539F\u59CB\u6765\u6E90\u7EE7\u7EED\u9605\u8BFB")}<ArrowUpRight size={16}/></a>{(selected.relatedSources?.length || 0) > 1 && <section className="related-reading"><h3>{t("\u540C\u4E00\u4E8B\u4EF6\u7684\u5176\u4ED6\u6765\u6E90")}</h3><div>{selected.relatedSources!.filter(source => source.url !== selected.url && /^https:\/\//i.test(source.url)).map(source => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer"><SourceMark platform="web"/><span>{source.name}</span><ArrowUpRight size={13}/></a>)}</div></section>}<div className="reader-footer"><button onClick={() => void feedback(selected, { liked: !selected.liked })} className={selected.liked ? 'liked' : ''}><Heart size={16} fill={selected.liked ? 'currentColor' : 'none'}/>{selected.liked ? t('你喜欢这条内容') : t('喜欢这条内容')}</button><button onClick={() => void blockSource(selected)}><EyeOff size={15}/>{t("\u5C4F\u853D\u8FD9\u4E2A\u6765\u6E90")}</button></div></section></div>}
+      {selected.analysis ? <div className="ai-reading"><div className="ai-label"><Sparkles size={15}/>{t("AI \u9605\u8BFB\u7B14\u8BB0")}<span>{selected.analysis.coverage === 'full_text' ? t('基于可读取正文') : selected.analysis.coverage === 'excerpt' ? t('基于原文摘要') : t('基于标题与元数据')}</span></div><ul>{selected.analysis.bullets.map((bullet, i) => <li key={i}>{bullet}</li>)}</ul><div className="relevance"><span>{t("\u4E0E\u4F60\u7684\u5173\u8054")}</span><p>{selected.analysis.relevance}</p></div><div className="analysis-references">{selected.analysis.references.map((url, i) => <a key={url} href={url} target="_blank" rel="noopener noreferrer">{t(`依据来源 ${i + 1}`)}<ArrowUpRight size={10}/></a>)}</div><span className="analysis-model">{selected.analysis.model}</span></div> : <button className="analyze-button" title={rankingCost} disabled={analyzing === selected.id} onClick={() => void analyze(selected)}>{analyzing === selected.id ? <Loader2 className="spin" size={17}/> : <Sparkles size={17}/>} {analyzing === selected.id ? t('正在阅读与整理…') : t('用 AI 帮我读一下')}<span>{t("\u63D0\u70BC\u8981\u70B9\u4E0E\u4E2A\u4EBA\u5173\u8054")}</span></button>}
+      <div className="original-label">{selected.kind === 'project' ? t('项目介绍') : t('来源内容')}<span>{t("\u4FDD\u7559\u539F\u59CB\u51FA\u5904")}</span></div><ContentCoverage item={selected} fromDevice={fromDevice}/><p className="reader-summary">{selected.summary}</p>{selected.body && <div className="reader-body">{textBody(selected.body)}</div>}<a href={selected.url} target="_blank" rel="noopener noreferrer" className="reader-origin">{t("\u5230\u539F\u59CB\u6765\u6E90\u7EE7\u7EED\u9605\u8BFB")}<ArrowUpRight size={16}/></a>{(selected.relatedSources?.length || 0) > 1 && <section className="related-reading"><h3>{t("\u540C\u4E00\u4E8B\u4EF6\u7684\u5176\u4ED6\u6765\u6E90")}</h3><div>{selected.relatedSources!.filter(source => source.url !== selected.url && /^https:\/\//i.test(source.url)).map(source => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer"><SourceMark platform="web"/><span>{source.name}</span><ArrowUpRight size={13}/></a>)}</div></section>}<div className="reader-footer"><button onClick={() => void feedback(selected, { liked: !selected.liked })} className={selected.liked ? 'liked' : ''}><Heart size={16} fill={selected.liked ? 'currentColor' : 'none'}/>{selected.liked ? t('你喜欢这条内容') : t('喜欢这条内容')}</button><button onClick={()=>void feedback(selected,{disliked:!(selected.disliked||selected.dismissed),dismissed:!(selected.disliked||selected.dismissed)})}><EyeOff size={15}/>{selected.disliked||selected.dismissed?t('撤销不喜欢'):t('不喜欢')}</button><button onClick={() => void blockSource(selected)}><EyeOff size={15}/>{t("\u5C4F\u853D\u8FD9\u4E2A\u6765\u6E90")}</button></div></section></div>}
     {importing && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget)
         setImporting(false); }}><section className="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title"><button className="modal-close icon-button" aria-label={t("\u5173\u95ED\u5BFC\u5165")} onClick={() => setImporting(false)}><X size={20}/></button><div className="import-symbol"><Link2 size={25}/></div><span className="micro-label">KEEP A GOOD FIND</span><h2 id="import-title">{t("\u628A\u4E00\u4E2A\u597D\u53D1\u73B0\uFF0C\u7559\u5728\u8FD9\u91CC\u3002")}</h2><p>{t("\u7C98\u8D34\u89C6\u9891\u3001\u6587\u7AE0\u3001X \u5E16\u5B50\u6216 GitHub \u9879\u76EE\u94FE\u63A5\uFF0C\u6574\u7406\u8FDB\u4F60\u7684\u79C1\u4EBA\u5185\u5BB9\u5E93\u3002")}</p><label className="form-label" htmlFor="import-url">{t("\u5185\u5BB9\u94FE\u63A5")}</label><input id="import-url" className="form-input" type="url" placeholder="https://…" value={importUrl} onChange={e => setImportUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter')
         void importContent(); }} autoFocus/><button className="primary-button full" onClick={() => void importContent()} disabled={importBusy || !importUrl.trim()}>{importBusy ? <Loader2 className="spin" size={16}/> : <Plus size={16}/>} {importBusy ? t('正在保存…') : t('加入我的内容库')}</button><span className="import-footnote"><ShieldCheck size={12}/>{t("\u6536\u85CF\u5185\u5BB9\u4EC5\u81EA\u5DF1\u53EF\u89C1")}</span></section></div>}
-    {toast && <div className="toast" role="status"><span className="toast-dot"/>{t(toast)}<button className="icon-button" aria-label={t("\u5173\u95ED\u63D0\u793A")} onClick={() => setToast('')}><X size={14}/></button></div>}
+    {dislikeToast&&<DislikeToast key={dislikeToast.token} onUndo={()=>void feedback(dislikeToast.item,{disliked:false,dismissed:false},dislikeToast)} onClose={()=>setDislikeToast(null)}/>}
+    {toast && !dislikeToast && <div className="toast" role="status"><span className="toast-dot"/>{t(toast)}<button className="icon-button" aria-label={t("\u5173\u95ED\u63D0\u793A")} onClick={() => setToast('')}><X size={14}/></button></div>}
   </div>;
+}
+function DislikeToast({onUndo,onClose}:{onUndo:()=>void;onClose:()=>void}) {
+    const {t}=useI18n();const [paused,setPaused]=useState(false);
+    const expire=useRef(onClose);expire.current=onClose;
+    useEffect(()=>{if(paused)return;const timer=setTimeout(()=>expire.current(),6000);return()=>clearTimeout(timer);},[paused]);
+    return <div className="toast dislike-toast" onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>setPaused(false)} onFocusCapture={()=>setPaused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))setPaused(false);}}>
+      <span role="status" aria-live="polite" aria-atomic="true">{t('已减少此类推荐')}</span>
+      <button className="small-button" onClick={onUndo}>{t('撤销')}</button>
+      <button className="icon-button" aria-label={t('关闭提示')} onClick={onClose}><X size={14}/></button>
+    </div>;
 }
 function ContentCard({ item, index, onOpen, onFeedback }: {
     item: ContentItem;
@@ -442,15 +496,15 @@ function ContentCard({ item, index, onOpen, onFeedback }: {
     const [imageFailed, setImageFailed] = useState(false);
     const Icon = kinds.find(x => x.id === item.kind)?.icon || FileText;
     const delay = computeStaggerDelay(index, 7, 50);
-    return <article data-tour="feed-item" className={`content-card card-${item.kind}`} data-visible="true" style={{ '--card-delay': delay, animationDelay: delay } as React.CSSProperties}>
+    return <article data-tour="feed-item" data-item-id={item.id} className={`content-card card-${item.kind}`} data-visible="true" style={{ '--card-delay': delay, animationDelay: delay } as React.CSSProperties}>
     {isVideo && <button className={`video-cover ${!item.image || imageFailed ? 'no-image' : ''}`} onClick={onOpen} aria-label={t(`观看 ${item.title}`)}>{item.image && !imageFailed ? <img src={item.image} alt="" referrerPolicy="no-referrer" loading={index < 2 ? 'eager' : 'lazy'} onError={() => setImageFailed(true)}/> : <><div className="abstract-lines"/><Video size={36}/><span>{item.topics[0] ? topicNames[item.topics[0]] : t('视频发现')}</span></>}<span className="video-play">▶</span><span className="video-platform">{platformId(item.platform) === 'youtube' ? 'YOUTUBE' : platformId(item.platform) === 'bilibili' ? 'BILIBILI' : item.platform.toUpperCase()}</span>{item.duration && <span className="duration-badge">{duration(item.duration)}</span>}</button>}
     <div className="card-content"><div className="card-source"><SourceMark platform={item.platform}/><span>{item.sourceName}</span><span className="source-divider">·</span><span>{timeAgo(item.publishedAt, language)}</span>{!isVideo && <span className={`kind-badge kind-${item.kind}`}><Icon size={11}/>{t(kinds.find(x => x.id === item.kind)?.label || '')}</span>}</div>
       {item.kind === 'project' && <div className="project-heading"><span className="project-icon"><Code2 size={21}/></span><span>{item.url.split('/').slice(-2, -1)[0] || 'OPEN SOURCE'}<span> / </span></span></div>}
       <button className="card-title" onClick={onOpen}><h2>{item.title}</h2>{item.kind === 'project' && <ArrowUpRight size={17}/>}</button>
       {!isVideo && <p className="card-description">{item.analysis?.bullets?.[0] || item.summary || t('打开原始来源，继续探索这条发现。')}</p>}
       <div className="card-tags">{item.topics.slice(0, 3).map(topic => <span key={topic}>{t(topicNames[topic] || topic)}</span>)}{(item.kind === 'news' || item.kind === 'article') && (item.relatedSources?.length || 0) > 1 && <span className="related-count"><Link2 size={9}/>{t(`${item.relatedSources!.length} 个来源`)}</span>}</div>
-      <div className="card-reason"><Sparkles size={11}/><span>{item.analysis?.relevance || item.reason || (item.kind === 'project' ? t('来自你的 GitHub Stars') : t('来自你选择的内容来源'))}</span></div>
-      <div className="card-bottom"><button className={item.liked ? 'liked' : ''} onClick={() => onFeedback({ liked: !item.liked })} aria-label={item.liked ? t('取消喜欢') : t('喜欢')} title={item.liked ? t('取消喜欢') : t('喜欢')}><Heart size={15} fill={item.liked ? 'currentColor' : 'none'}/></button><button className={item.saved ? 'is-saved' : ''} onClick={() => onFeedback({ saved: !item.saved })} aria-label={item.saved ? t('取消稍后看') : t('稍后看')} title={item.saved ? t('取消稍后看') : t('稍后看')}><Bookmark size={15} fill={item.saved ? 'currentColor' : 'none'}/></button><button className={item.read ? 'is-read' : ''} onClick={() => onFeedback({ read: !item.read })} aria-label={item.read ? t('标记未读') : t('标记读过')} title={item.read ? t('标记未读') : t('标记读过')}><CheckCheck size={15}/></button><span className="card-bottom-spacer"/>{item.analysis && <span className="ai-mini"><Sparkles size={10}/>{t("AI \u5DF2\u8BFB")}</span>}<button onClick={() => onFeedback({ dismissed: true })} aria-label={t("\u4E0D\u611F\u5174\u8DA3")} title={t("\u4E0D\u611F\u5174\u8DA3")}><EyeOff size={14}/></button><button className="open-card-button" onClick={onOpen} aria-label={t("\u6253\u5F00\u5185\u5BB9")}><ArrowUpRight size={15}/></button></div>
+      <div className="card-reason"><Sparkles size={11}/><span>{item.reason || (item.analysis?.summaryLanguage===language?item.analysis.relevance:undefined) || (item.kind === 'project' ? t('来自你的 GitHub Stars') : t('来自你选择的内容来源'))}</span></div>
+      <div className="card-bottom"><button className={item.liked ? 'liked' : ''} onClick={() => onFeedback({ liked: !item.liked })} aria-label={item.liked ? t('取消喜欢') : t('喜欢')} title={item.liked ? t('取消喜欢') : t('喜欢')}><Heart size={15} fill={item.liked ? 'currentColor' : 'none'}/></button><button className={item.saved ? 'is-saved' : ''} onClick={() => onFeedback({ saved: !item.saved })} aria-label={item.saved ? t('取消稍后看') : t('稍后看')} title={item.saved ? t('取消稍后看') : t('稍后看')}><Bookmark size={15} fill={item.saved ? 'currentColor' : 'none'}/></button><button className={item.read ? 'is-read' : ''} onClick={() => onFeedback({ read: !item.read })} aria-label={item.read ? t('标记未读') : t('标记读过')} title={item.read ? t('标记未读') : t('标记读过')}><CheckCheck size={15}/></button><span className="card-bottom-spacer"/>{item.analysis && <span className="ai-mini"><Sparkles size={10}/>{t("AI \u5DF2\u8BFB")}</span>}<button onClick={() => onFeedback({ disliked: !(item.disliked||item.dismissed), dismissed: !(item.disliked||item.dismissed) })} aria-label={item.disliked||item.dismissed?t('撤销不喜欢'):t('不喜欢')} title={item.disliked||item.dismissed?t('撤销不喜欢'):t('不喜欢')}><EyeOff size={14}/><span className="dislike-label">{item.disliked||item.dismissed?t('撤销不喜欢'):t('不喜欢')}</span></button><button className="open-card-button" onClick={onOpen} aria-label={t("\u6253\u5F00\u5185\u5BB9")}><ArrowUpRight size={15}/></button></div>
       <ContentActions item={item} onOpen={onOpen}/>
     </div>
   </article>;

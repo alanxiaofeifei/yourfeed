@@ -55,7 +55,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/deployment/check'&&request.method==='POST')return response(await checkDeployment(env,request));
     const url=new URL(request.url);
     const presentationProfile=async()=>{const profile=await getProfile(env);const locale=request.headers.get('accept-language');return locale?{...profile,language:localeFromTag(locale)}:profile;};
-    if(path==='/api/library'&&request.method==='GET')return response(await queryLibrary(env,{userId,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read',q:url.searchParams.get('q')||'',type:(url.searchParams.get('type')||'all') as Kind|'all',cursor:url.searchParams.get('cursor')||undefined,limit:20}));
+    if(path==='/api/library'&&request.method==='GET')return response(await queryLibrary(env,{userId,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read'|'disliked',q:url.searchParams.get('q')||'',type:(url.searchParams.get('type')||'all') as Kind|'all',cursor:url.searchParams.get('cursor')||undefined,limit:20}));
     if(path==='/api/content'&&request.method==='GET'){const item=await getContentById(env,url.searchParams.get('id')||'');if(!item)throw new HttpError(404,'内容不存在。');const feedback=await readFeedback(env,userId);return response({...item,...feedback[item.id]});}
     if((path==='/api/archive'||path==='/api/export')&&request.method==='GET')return response(await exportLibraryPage(env,userId,{cursor:url.searchParams.get('cursor')||undefined,limit:50,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read'}));
     if(path==='/api/archive/import/preview'&&request.method==='POST')return response(await restoreLibrary(env,userId,await readLibraryArchiveBody(request),false));
@@ -87,7 +87,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     }
     if(path==='/api/feedback'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.id!=='string'||!body.patch||typeof body.patch!=='object')throw new HttpError(400,'反馈内容不完整。');
-      const patch:Feedback={};for(const key of ['liked','saved','read','dismissed'] as const){const value=(body.patch as Record<string,unknown>)[key];if(typeof value==='boolean')patch[key]=value;}
+      const patch:Feedback={};for(const key of ['liked','saved','read','dismissed','disliked'] as const){const value=(body.patch as Record<string,unknown>)[key];if(typeof value==='boolean')patch[key]=value;}
       if(!(await env.DB.prepare('SELECT id FROM content WHERE id=?').bind(body.id).first()))throw new HttpError(404,'这条内容不存在。');
       return response({ok:true,feedback:await saveFeedback(env,userId,body.id,patch)});
     }

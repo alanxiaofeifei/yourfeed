@@ -3,3 +3,6 @@
 .home-guide-entry>.tour-launcher{flex:0 0 auto;margin:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 .home-guide-entry>p{flex:1 1 230px;min-width:0;margin:0;color:var(--muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 @media(max-width:650px){.home-guide-entry{padding:12px;gap:10px}.home-guide-entry>.tour-launcher{min-height:44px}.home-guide-entry>p{flex-basis:100%;font-size:11px}}
+
+.ranking-cost{font-size:11px;line-height:1.8;color:var(--muted);margin:0 0 18px;max-width:70ch}.card-bottom .dislike-label{font-size:10px;line-height:1.4}.card-bottom>button:has(.dislike-label){display:inline-flex;align-items:center;gap:4px;min-height:36px;padding-inline:5px}.dislike-toast{max-width:calc(100vw - 24px);flex-wrap:wrap;z-index:250}.dislike-toast .small-button{min-height:44px}.reader-footer{flex-wrap:wrap;gap:12px}
+@media(max-width:600px){.card-bottom .dislike-label{display:none}}

@@ -1,5 +1,13 @@
 // Vietnamese interface translations. Original source content is not translated.
 export const vietnameseMessages: Record<string, string> = {
+  "不喜欢": "Không quan tâm",
+  "不喜欢的内容": "Lịch sử không quan tâm",
+  "撤销不喜欢": "Hoàn tác không quan tâm",
+  "已减少此类推荐": "Giảm nội dung tương tự",
+  "撤销": "Hoàn tác",
+  "不喜欢的内容会保留在这里，可随时撤销。": "Xem lại nội dung đã đánh dấu không quan tâm và hoàn tác bất cứ lúc nào.",
+  "喜欢和不喜欢仅在本实例按用户免费排序，不调用 AI。AI 阅读笔记或画像建议使用你自己的 Key，由服务商计费；未配置时尝试有限、尽力而为的免费公共通道。": "Lượt thích và không quan tâm xếp hạng cục bộ miễn phí cho từng người dùng trong phiên bản này, không gọi AI. Ghi chú AI hoặc lời khuyên hồ sơ dùng khóa riêng của bạn và nhà cung cấp tính phí; nếu chưa có khóa, hệ thống thử kênh công cộng miễn phí có giới hạn và không đảm bảo.",
+
   "我的账户": "Tài khoản của tôi",
   "私人阅读空间": "Không gian đọc riêng tư",
   "账户与登录管理请使用右上角菜单。": "Quản lý tài khoản và đăng nhập bằng menu ở góc trên bên phải.",

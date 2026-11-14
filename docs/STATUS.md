@@ -1,5 +1,13 @@
 # 当前项目状态
 
+## Issue C / #13（2026-11-15，本地验收完成）
+- [Issue #13](https://github.com/alanxiaofeifei/yourfeed/issues/13) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`、基线 `4bbb012`；执行仓库外 `TASK_C.md`，全部改动未提交、未推送、未合并、未部署，未写 GitHub、未运行远程 Wrangler、未读取私密目录或密钥。
+- 四语卡片/阅读器「不喜欢」立即隐藏，6 秒无障碍 Undo（悬停/聚焦暂停）；侧栏历史可分页搜索并撤销旧 dismissed，跨刷新可恢复。逐条串行写入、失败回滚、Undo 原位恢复并保留已加载页面；手机使用有完整无障碍名称的图标按钮。四语理由与本地免费排序、自带 Key/有限免费通道费用说明已补齐。
+- 复用本实例 D1 按用户存储的 feedback JSON，同步 disliked/dismissed、服务端 updatedAt、原子合并其他信号；权重 +1/+0.45/+0.15/-1.4，负向意图优先，30 天半衰期、旧记录按 14 天、主题/来源限幅 ±1.5。只隐藏条目，相关主题/来源降权；沿用原有 1,000 条候选窗口，历史/归档不受该窗口限制。无 schema/迁移、鉴权、实例绑定或权限改动，归档保留新信号和时间戳。
+- 修复旧自动 AI 分析将用户标记写回内容缓存的路径：内容读写剥离反馈及理由，仅合并当前用户的 feedback，不迁移或删除反馈；晚到 AI 结果不重开已关闭阅读器，也不覆盖当前标记。单元覆盖衰减/撤销、并发、跨用户/实例、旧缓存污染及归档；浏览器覆盖四语、慢请求 Undo、历史恢复、多页和晚到 AI。
+- 最终验证：Node 24.22.1 / npm 11.21.1、现有锁文件；unit **806/806（66 files）**、typecheck、Cloudflare build、生产模式 e2e **72 passed / 15 skipped**。中断恢复后代码未变，以 `npm ci` 恢复依赖并重建，仅复跑性能 **1/1（192 样本，TOUR_PERF_ASSERT=1）** 和截图 **4/4**；桌面 p95 最高 **31.3ms < 100ms**，手机390/CDP4×最高 **47.1ms**（绘制帧代理，非物理呈现）。性能 JSON 的资源 SHA256 已与最终 dist 核对，`git diff --check` 通过。
+- 证据：仓库外 `unit-C.log`、`typecheck-C.log`、`build-C.log`、`e2e-C.log`、`perf-C.log`、`perf-C.json`、`screenshots-C.log`；`phaseC-shots/` 四张中文桌面卡片/Undo、手机卡片、英文桌面截图均目视检查。完成记录 `C_DONE.md`。测试均为合成/模拟网络；真实设备、读屏、线上未验证。下一步仅审阅本地 diff，本任务已停止。
+
 
 ## Issue D / #14 检查点（2026-11-15 03:44 UTC+8，已推送并部署 preview）
 - 提交 `8df845e`（免 Key 免费公共通道）+ `0a5b9bc`（Cloudflare 出口实测后调参）已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `aa2786a0`（上一版 `26c055d7`）。仅代码部署：未重传 secret、未迁移、未重置 preview D1。生产 `yourfeed` 与 `yourfeed-member-001` 未动。
