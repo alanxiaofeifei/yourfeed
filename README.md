@@ -116,6 +116,8 @@ The example contains no usable credentials. Generate independent encryption and 
 
 ## Deploy and maintain
 
+Project instructions: [AGENTS.md](AGENTS.md) · [current status](docs/STATUS.md).
+
 Read [deployment and sign-in](docs/deployment.md), [custom domains](docs/domains.md), and [backup and rollback](docs/backup-and-rollback.md). The standalone target is Cloudflare Workers with D1. The build supports a separate `YOURFEED_BUILD_PROFILE=sites` adapter; real Sites IDs and access settings belong only in your private deployment.
 
 ```sh
