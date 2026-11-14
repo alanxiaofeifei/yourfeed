@@ -6,6 +6,9 @@ import ThemeToggle from './components/ThemeToggle';
 import AccountMenu from './components/AccountMenu';
 import { SidebarPrivacyNote } from './components/Sidebar';
 import './page.css';
+import SettingsSearch from './components/SettingsSearch';
+import {settingsMessages} from '../shared/settings-messages';
+import {settingStatus,type SettingsTab,type SettingStatus} from '../shared/settings-search-index';
 import SettingsPanel, { type Settings } from './components/AiSettings';
 import DailyBriefing from './components/DailyBriefing';
 import { useI18n, LanguageToggle, localeTag, translate, type Language } from './i18n';
@@ -73,17 +76,33 @@ export default function Home() {
     const { language, t } = useI18n();
     const [sessionUserId,setSessionUserId]=useState('');
     const [sidebarReadyFor,setSidebarReadyFor]=useState('');
+    const m=settingsMessages[language];
     const dirtyForm=useRef(false);
+    const [dirtySections,setDirtySections]=useState<Record<string,boolean>>({});
+    const dirtySectionsRef=useRef<Record<string,boolean>>({});
+    const [profileReadOk,setProfileReadOk]=useState<boolean|undefined>();
+    const [sectionStatus,setSectionStatus]=useState<Partial<Record<SettingsTab,SettingStatus>>>({});
+    const visited=useRef(new Set<string>());
+    const [returnToSources,setReturnToSources]=useState(false);
+    const reportDirty=useCallback((section:string,value:boolean)=>{dirtySectionsRef.current={...dirtySectionsRef.current,[section]:value};setDirtySections(dirtySectionsRef.current);},[]);
+    const profileDirty=useCallback((v:boolean)=>reportDirty('profile',v),[reportDirty]);
+    const aiDirty=useCallback((v:boolean)=>reportDirty('ai',v),[reportDirty]);
+    const domainDirty=useCallback((v:boolean)=>reportDirty('domain',v),[reportDirty]);
+    const sourceDirty=useCallback((v:boolean)=>reportDirty('sources',v),[reportDirty]);
+    const storageStatus=useCallback((value:SettingStatus)=>setSectionStatus(old=>({...old,storage:value})),[]);
+    const domainStatus=useCallback((value:SettingStatus)=>setSectionStatus(old=>({...old,domain:value})),[]);
+    const leaveAllowed=()=>!dirtyForm.current||window.confirm(m.guard);
+
     const [sourceEntry,setSourceEntry]=useState<{kind:'curated'|'manual'|'closed';request:number}|null>(null);
     const [sourceModal,setSourceModal]=useState(false);
-    const onDirtyChange=useCallback((value:boolean)=>{dirtyForm.current=value;},[]);
+    const onDirtyChange=useCallback((value:boolean)=>{dirtyForm.current=value;reportDirty('feed',value);},[reportDirty]);
     const navigateForTour=(target:TourTarget)=>{
         const leavesForm=target.view!==view||(target.view==='settings'&&target.settingsTab!==settingsTab)||(target.view==='sources'&&(!!target.sourceEntry||sourceModal));
-        if(leavesForm&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return false;
+        if(leavesForm&&dirtyForm.current&&!window.confirm(m.guard))return false;
         if(!leavesForm)return true;
         dirtyForm.current=false;setSelected(null);setImporting(false);setView(target.view);setMobileNav(false);
         if(target.settingsTab)setSettingsTab(target.settingsTab);
-        setSourceEntry({kind:target.sourceEntry||'closed',request:Date.now()});
+        if(target.view==='sources')setSourceEntry({kind:target.sourceEntry||'closed',request:Date.now()});
         return true;
     };
     const tour=useTour({userId:sessionUserId,ready:!!sessionUserId&&sidebarReadyFor===sessionUserId,onNavigate:navigateForTour});
@@ -93,6 +112,11 @@ export default function Home() {
     const [sourceChatText, setSourceChatText] = useState('');
     const [briefingRevision, setBriefingRevision] = useState(0);
     const [view, setView] = useState<View>('feed');
+    if(view==='settings'||view==='sources')visited.current.add(view);
+    dirtyForm.current=!!dirtySectionsRef.current[view==='settings'?settingsTab:view];
+    useEffect(()=>{if(view!=='settings')return;let active=true;api<{evidence:{hasSavedProfile:boolean}}>('/api/onboarding').then(data=>{if(active)setSectionStatus(old=>({...old,profile:typeof data.evidence?.hasSavedProfile==='boolean'?(data.evidence.hasSavedProfile?'saved':'notConfigured'):'unavailable'}));}).catch(()=>{if(active)setSectionStatus(old=>({...old,profile:'unavailable'}));});return()=>{active=false;};},[view]);
+    useEffect(()=>{if(!Object.values(dirtySections).some(Boolean))return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirtySections]);
+
     const [mode, setMode] = useState<Mode>('rest');
     const [kind, setKind] = useState<'all' | Kind>('all');
     const [query, setQuery] = useState('');
@@ -161,7 +185,7 @@ export default function Home() {
     const loadSidebar = useCallback(async () => { const result = await Promise.allSettled([api<{
             sources: Source[];
         }>('/api/sources'), api<Settings>('/api/settings'), api<Usage>('/api/usage'), api<UserProfile>('/api/profile')]); if (!active.current)
-        return; setBriefingRevision(value => value + 1); if (result[0].status === 'fulfilled')
+        return; setProfileReadOk(result[3].status==='fulfilled'); setSectionStatus(old=>({...old,ai:result[1].status==='fulfilled'?settingStatus(true,!!result[1].value.configured||!!result[1].value.youtubeConfigured):'unavailable'})); setBriefingRevision(value => value + 1); if (result[0].status === 'fulfilled')
         setSources(result[0].value.sources || []); if (result[1].status === 'fulfilled')
         setSettings(result[1].value); if (result[2].status === 'fulfilled')
         setUsage(result[2].value); if (result[3].status === 'fulfilled')
@@ -297,8 +321,8 @@ export default function Home() {
         if (active.current)
             setAnalysisProgress('');
     } })(); }, [loading, syncing, view, settings.enabled, settings.configured, settings.usingFreeAi, settings.provider, settings.model, settings.dailyLimit, loadSidebar, notify]);
-    const switchSettingsTab=(next:typeof settingsTab)=>{if(next!==settingsTab&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return;if(next!==settingsTab)dirtyForm.current=false;setSettingsTab(next);};
-    const navigate = (next: View) => { if(next!==view&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return;if(next!==view)dirtyForm.current=false;setView(next); setMobileNav(false); setQuery(''); setSearch(''); setSelected(null); };
+    const switchSettingsTab=(next:typeof settingsTab)=>{if(next!==settingsTab&&!leaveAllowed())return false;setSettingsTab(next);return true;};
+    const navigate = (next: View) => { if(next!==view&&dirtyForm.current&&!window.confirm(m.guard))return;if(next!==view)dirtyForm.current=false;setView(next); setMobileNav(false); setQuery(''); setSearch(''); setSelected(null); };
     // Serial writes per item let Undo run before a slow dislike response without reversing order.
     const feedback = async (item: ContentItem, patch: Feedback, restore?:{index:number;scope:string}) => {
         const negative=patch.disliked!==undefined;
@@ -428,15 +452,15 @@ export default function Home() {
       <header className="topbar" ref={topbarRef} data-scrolled="false"><div className="breadcrumb"><button className="mobile-menu icon-button" onClick={() => setMobileNav(true)} aria-label={t("\u6253\u5F00\u5BFC\u822A")}><Menu size={20}/></button><span>{t("\u6211\u7684\u7A7A\u95F4")}</span><ChevronRight size={13}/><strong>{view === 'sources' ? t('内容来源') : view === 'settings' ? t('偏好与 AI 设置') : view === 'saved' ? t('稍后再看') : view === 'liked' ? t('我喜欢的') : view === 'read' ? t('阅读足迹') : view === 'disliked' ? t('不喜欢的内容') : t('为你发现')}</strong></div><div className="topbar-actions"><span data-tour="language"><LanguageToggle /></span><ThemeToggle /><AccountMenu onSessionChange={setSessionUserId} /><button className="small-button add-button" onClick={() => setImporting(true)}><Plus size={15}/><span>{t("\u6536\u85CF\u94FE\u63A5")}</span></button></div></header>
       <main className={view === 'settings' || view === 'sources' ? 'main-area full-width' : 'main-area'}>
         {/* Always in normal flow, before every feed/settings state; never tied to auto-offer eligibility. */}
-        <div className="tour-home"><div className="home-guide-entry" data-tour="home-guide-entry">{tour.launch}<PreferenceEntry disabled={!sessionUserId}/><PreferenceCards userId={sessionUserId} profile={profile} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onProfile={value=>{setProfile(value);void tour.refresh('profile-saved');}} reload={loadSidebar} onManual={()=>{navigateForTour({view:'settings',settingsTab:'profile',anchor:'profile-interests'});}}/><p>{t('随时继续或重新查看配置引导，不会清空你的设置。','Resume or review setup anytime, without clearing your settings.')}</p></div>{!sourceModal&&tour.region}</div>
+        <div className="tour-home"><div className="home-guide-entry" data-tour="home-guide-entry">{tour.launch}<PreferenceEntry disabled={!sessionUserId}/><PreferenceCards userId={sessionUserId} profile={profile} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onProfile={value=>{setProfile(value);setProfileReadOk(true);setSectionStatus(old=>({...old,profile:'saved'}));void tour.refresh('profile-saved');}} reload={loadSidebar} onManual={()=>{navigateForTour({view:'settings',settingsTab:'profile',anchor:'profile-interests'});}}/><p>{t('随时继续或重新查看配置引导，不会清空你的设置。','Resume or review setup anytime, without clearing your settings.')}</p></div>{!sourceModal&&tour.region}</div>
         {shortQueryLimited&&<p role="status" className="storage-warning">{t('短关键词仅搜索最近 1,000 条；输入至少 3 个字符搜索完整历史。','Short queries search the latest 1,000 items. Enter at least 3 characters to search all history.')}</p>}
-        {retentionWarning&&<button className="storage-warning small-button" onClick={()=>{if(dirtyForm.current&&!window.confirm(tour.dirtyConfirm))return;dirtyForm.current=false;setSettingsTab('storage');navigate('settings');}}>{t('部分正文即将到期，查看存储与下载归档','Some text is nearing expiry. Review storage and download an archive.')}</button>}
-        {view === 'settings' ? <section className="settings-container"><div className="settings-section-picker"><div className="settings-picker-heading"><h2 id="settings-section-label">{t('选择设置分类','Choose a settings section')}</h2><p>{t('点选下方卡片，管理你的偏好、模型或网站。','Choose a card to manage your preferences, AI models, or site.')}</p></div><nav className="settings-tabs" aria-labelledby="settings-section-label">{([
+        {retentionWarning&&<button className="storage-warning small-button" onClick={()=>{if(dirtyForm.current&&!window.confirm(m.guard))return;dirtyForm.current=false;setSettingsTab('storage');navigate('settings');}}>{t('部分正文即将到期，查看存储与下载归档','Some text is nearing expiry. Review storage and download an archive.')}</button>}
+        {visited.current.has('settings')&&<div hidden={view!=='settings'}><section className="settings-container"><div className="settings-section-picker"><div className="settings-picker-heading"><h2 id="settings-section-label">{t('选择设置分类','Choose a settings section')}</h2><p>{t('点选下方卡片，管理你的偏好、模型或网站。','Choose a card to manage your preferences, AI models, or site.')}</p></div><SettingsSearch onJump={switchSettingsTab}/><nav className="settings-tabs" aria-labelledby="settings-section-label">{([
           {id:'profile',label:t('我的偏好','My profile'),description:t('目标、兴趣与语言','Goals, interests, and language'),icon:SlidersHorizontal},
           {id:'ai',label:t('AI 与接口','AI & APIs'),description:t('密钥、模型与用量','API keys, models, and usage'),icon:KeyRound},
           {id:'storage',label:t('存储与归档','Storage & archive'),description:t('本地缓存、导出与后台更新','Local cache, exports, and background updates'),icon:BookOpen},
           {id:'domain',label:t('部署与域名','Deployment & domain'),description:t('实例地址与域名验证','Site address and domain verification'),icon:Globe2},
-        ] as const).map(tab=>{const Icon=tab.icon;const active=settingsTab===tab.id;return <button key={tab.id} type="button" onClick={()=>switchSettingsTab(tab.id)} className={active?'selected':''} aria-pressed={active}><span className="settings-tab-top"><span className="settings-tab-icon"><Icon size={22} aria-hidden="true"/></span><span className={`settings-tab-state ${active?'current':''}`}>{active?<><Check size={12} aria-hidden="true"/>{t('当前','Current')}</>:<ChevronRight size={18} aria-hidden="true"/>}</span></span><span className="settings-tab-copy"><strong>{tab.label}</strong><span>{tab.description}</span></span></button>;})}</nav></div>{settingsTab === 'profile' ? <ProfileSettings profile={profile} onChange={value=>{setProfile(value);void tour.refresh('profile-saved');}} onDirtyChange={onDirtyChange} notify={notify} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onOpenAiSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }} onUsageChange={() => void loadSidebar()}/> : settingsTab === 'ai' ? <SettingsPanel onDirtyChange={onDirtyChange} onBusinessChange={tour.refresh} settings={settings} onChange={setSettings} usage={usage} notify={notify} reload={loadSidebar}/> : settingsTab==='storage' ? <><StorageSettings userId={sessionUserId} notify={notify}/><BackgroundSettings/></> : <DeploymentSettings />}</section> : view === 'sources' ? <SourceSettings tourRegion={tour.region} tourEntry={sourceEntry} onModalChange={setSourceModal} onDirtyChange={onDirtyChange} onBusinessChange={tour.refresh} sources={sources} syncing={syncing} syncText={syncText} onSync={() => void refresh(true)} onImport={() => setImporting(true)} reload={loadSidebar} notify={notify} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onOpenAiSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }} importText={sourceImportText} onImportTextChange={setSourceImportText} chatText={sourceChatText} onChatTextChange={setSourceChatText}/> : <>
+        ] as const).map(tab=>{const Icon=tab.icon;const active=settingsTab===tab.id;const status=(tab.id==='profile'&&profileReadOk===false)||sectionStatus[tab.id]==='unavailable'?'unavailable':dirtySections[tab.id]?'unsaved':sectionStatus[tab.id]||'loading';return <button key={tab.id} type="button" onClick={()=>switchSettingsTab(tab.id)} className={active?'selected':''} aria-pressed={active}><span className="settings-tab-top"><span className="settings-tab-icon"><Icon size={22} aria-hidden="true"/></span><span className={`settings-tab-state ${active?'current':''}`}>{active?<><Check size={12} aria-hidden="true"/>{t('当前','Current')}</>:<ChevronRight size={18} aria-hidden="true"/>}</span></span><span className="settings-tab-copy"><strong>{tab.label}</strong><span>{tab.description}</span><small className={`settings-status ${status}`} data-settings-status={tab.id}>{m[status]}</small></span></button>;})}</nav></div><div hidden={settingsTab!=='profile'}><ProfileSettings initialStatus={profileReadOk===false?'unavailable':sectionStatus.profile||'loading'} profile={profile} onChange={value=>{setProfile(value);setProfileReadOk(true);setSectionStatus(old=>({...old,profile:'saved'}));void tour.refresh('profile-saved');}} onDirtyChange={profileDirty} notify={notify} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onOpenAiSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }} onUsageChange={() => void loadSidebar()}/></div><div hidden={settingsTab!=='ai'}><SettingsPanel initialStatus={sectionStatus.ai||'loading'} onOpenSources={()=>{if(!leaveAllowed())return;setView('sources');setReturnToSources(false);}} returningToSources={returnToSources} onDirtyChange={aiDirty} onBusinessChange={tour.refresh} settings={settings} onChange={value=>{setSettings(value);setSectionStatus(old=>({...old,ai:settingStatus(true,!!value.configured||!!value.youtubeConfigured)}));}} usage={usage} notify={notify} reload={loadSidebar}/></div><div hidden={settingsTab!=='storage'}><StorageSettings onStatusChange={storageStatus} userId={sessionUserId} notify={notify}/><BackgroundSettings/></div><div hidden={settingsTab!=='domain'}><DeploymentSettings onDirtyChange={domainDirty} onStatusChange={domainStatus}/></div></section></div>}{visited.current.has('sources')&&<div hidden={view!=='sources'}><SourceSettings active={view==='sources'} youtubeConfigured={!!settings.youtubeConfigured} onOpenYoutubeSettings={()=>{if(!leaveAllowed())return;setReturnToSources(true);setView('settings');setSettingsTab('ai');requestAnimationFrame(()=>document.getElementById('youtube-key')?.focus());}} tourRegion={view==='sources'?tour.region:undefined} tourEntry={sourceEntry} onModalChange={setSourceModal} onDirtyChange={sourceDirty} onBusinessChange={tour.refresh} sources={sources} syncing={syncing} syncText={syncText} onSync={() => void refresh(true)} onImport={() => setImporting(true)} reload={loadSidebar} notify={notify} aiConfigured={!!settings.configured||!!settings.freeAiAvailable} onOpenAiSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }} importText={sourceImportText} onImportTextChange={setSourceImportText} chatText={sourceChatText} onChatTextChange={setSourceChatText}/></div>}{view!=='settings'&&view!=='sources'&&<>
           <section className="main-column">
             <div className="welcome-eyebrow"><span className="amber-dash"/><span>{view === 'feed' ? 'CURATED FOR YOUR CURIOSITY' : 'A LITTLE COLLECTION OF YOU'}</span><span className="editorial-edition-pill"><span className="editorial-edition-dot"/>{mode === 'rest' ? 'EDITION · RELAXED' : 'EDITION · FOCUSED'}</span></div>
             <div className="hero-heading"><div key={`${view}-${mode}`} className="hero-copy-stage"><KineticHeadline text={t(pageTitle)} scrambleKeyword={mode === 'rest' ? 'RELAX' : 'FOCUS'} /><p>{view === 'feed' ? (mode === 'rest' ? t('从一个有趣的视频、一篇好文章开始。享受这段属于你的时间。') : t('从真实的问题出发，积累能带到下一阶段的知识与经验。')) : t('把有价值的发现留下来，随时回来接着看。')}</p></div><EditorialSignalMark variant="hero" mode={mode} syncing={syncing}/></div>
@@ -444,7 +468,7 @@ export default function Home() {
             <div className="discovery-controls"><div className="mode-switch" data-mode={mode}><button className={mode === 'rest' ? 'selected' : ''} onClick={() => setMode('rest')}><Leaf size={15}/>{t("\u4F11\u606F\u4E00\u4E0B")}</button><button className={mode === 'grow' ? 'selected' : ''} onClick={() => setMode('grow')}><GraduationCap size={16}/>{t("\u60F3\u5B66\u4E00\u70B9")}</button></div><div className="feed-update-actions">{view==='feed'&&<button type="button" data-tour="feed-shuffle" className="shuffle-button" onClick={()=>void shuffleFeed()} disabled={loading||loadingMore||syncing||shuffling} title={t('从已缓存的内容中换一批，不更新来源、不调用 AI，也不改变已读或兴趣反馈。','Show another batch from cached items. No source updates, AI calls, or reading/preference changes.')} aria-busy={shuffling}>{shuffling?<Loader2 size={16} className="spin"/>:<Shuffle size={17}/>}<span>{shuffling?t('正在换一批…','Finding another batch…'):t('换一批','Another batch')}</span></button>}<button type="button" data-tour="feed-update" className={`refresh-button ${syncing ? 'spinning' : ''}`} onClick={() => void refresh(true)} disabled={syncing||shuffling}><RefreshCw size={14}/>{syncing?t('正在更新','Updating…'):t('更新来源','Update sources')}</button></div></div>
             {view === 'feed' && <DailyBriefing revision={briefingRevision} onOpen={openContent} onNews={() => { setKind('news'); setQuery(''); setSearch(''); }}/>}
 
-            {view === 'feed' && !loading && !error && !items.length && !sources.length && <div hidden={tour.active}><ProfileOnboarding profile={profile} onDirtyChange={onDirtyChange} onChange={value=>{setProfile(value);void tour.refresh('profile-saved');}} notify={notify} onSources={() => navigate('sources')} onSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }}/></div>}
+            {view === 'feed' && !loading && !error && !items.length && !sources.length && <div hidden={tour.active}><ProfileOnboarding profile={profile} onDirtyChange={onDirtyChange} onChange={value=>{setProfile(value);setProfileReadOk(true);setSectionStatus(old=>({...old,profile:'saved'}));void tour.refresh('profile-saved');}} notify={notify} onSources={() => navigate('sources')} onSettings={() => { navigateForTour({view:'settings',settingsTab:'ai',anchor:'ai-provider'}); }}/></div>}
             <div className="feed-toolbar" ref={feedToolbarRef}><div className="kind-tabs" ref={kindTabsRef} data-gliding="true">{kinds.map(({ id, label }) => <button key={id} data-tab-id={id} className={kind === id ? 'selected' : ''} onClick={() => setKind(id)}>{t(label)}</button>)}</div><button className="filter-button" onClick={() => document.getElementById('feed-search')?.focus()} aria-label={t("\u641C\u7D22\u5185\u5BB9")}><Search size={17}/></button></div>
             <div className="search-row"><Search size={15}/><input data-tour="feed-search" id="feed-search" maxLength={200} placeholder={t("\u5728\u4F60\u7684\u5185\u5BB9\u82B1\u56ED\u91CC\u641C\u7D22\u2026")} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button className="icon-button" aria-label={t("\u6E05\u9664\u641C\u7D22")} onClick={() => setQuery('')}><X size={14}/></button>}<span className="result-count">{t(`${total} 条发现`)}</span></div>
             {view==='feed'&&<p className="ranking-cost">{rankingCost}</p>}

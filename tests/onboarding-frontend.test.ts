@@ -71,7 +71,7 @@ describe('frontend tour safety boundaries', () => {
   expect(tour).toContain("if(value&&(value.state.status==='dismissed'||value.state.status==='completed')){setOpen(false);setWelcome(false);}");
  });
  it('retains forms until explicit guarded destination navigation',()=>{
-  expect(home).toContain('leavesForm&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm)');
+  expect(home).toContain('leavesForm&&dirtyForm.current&&!window.confirm(m.guard)');
   expect(tour).toContain('onNavigate(target)');
   expect(readFileSync(new URL('../app/components/onboarding/Spotlight.tsx',import.meta.url),'utf8')).toContain("window.matchMedia('(prefers-reduced-motion: reduce)')");
  });

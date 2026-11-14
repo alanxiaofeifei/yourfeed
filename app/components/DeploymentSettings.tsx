@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ExternalLink, Globe2, LoaderCircle, ShieldCheck } from 'lucide-react';
+import {useDirtyFormGuard} from './useDirtyFormGuard';
+import type {SettingStatus} from '../../shared/settings-search-index';
 import type { DeploymentState } from '../../server/deployment';
 import { localeTag, useI18n } from '../i18n';
 import './DeploymentSettings.css';
 
-export default function DeploymentSettings() {
+export default function DeploymentSettings({onDirtyChange,onStatusChange}:{onDirtyChange?:(v:boolean)=>void;onStatusChange?:(v:SettingStatus)=>void}) {
+ const guard=useDirtyFormGuard(onDirtyChange);
  const {t,language}=useI18n();
  const [state,setState]=useState<DeploymentState|null>(null),[hostname,setHostname]=useState(''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  async function call(path:string,method='GET',body?:unknown) {
@@ -14,10 +17,10 @@ export default function DeploymentSettings() {
   const value=await response.json() as DeploymentState & {error?:string};if(!response.ok)throw new Error(value.error||t('操作未完成，请重试。','The action could not complete. Try again.'));
   return value as DeploymentState;
  }
- useEffect(()=>{let mounted=true;call('/api/deployment').then(value=>{if(mounted){setState(value);setHostname(value.hostname);}}).catch(e=>{if(mounted)setError(e.message);});return()=>{mounted=false;};},[]);
+ useEffect(()=>{let mounted=true;call('/api/deployment').then(value=>{if(mounted){setState(value);setHostname(value.hostname);onStatusChange?.(value.hostname?'saved':'notConfigured');}}).catch(e=>{if(mounted){setError(e.message);onStatusChange?.('unavailable');}});return()=>{mounted=false;};},[]);
  async function perform(action:'save'|'check') {
-  setBusy(action);setError('');setSaved(false);
-  try {const value=await call(action==='save'?'/api/deployment':'/api/deployment/check',action==='save'?'PUT':'POST',action==='save'?{hostname}:{});setState(value);setHostname(value.hostname);setSaved(action==='save');}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy('');}
+  if(guard.lock.current)return;guard.lock.current=true;setBusy(action);setError('');setSaved(false);
+  try {const value=await call(action==='save'?'/api/deployment':'/api/deployment/check',action==='save'?'PUT':'POST',action==='save'?{hostname}:{});setState(value);setHostname(value.hostname);setSaved(action==='save');if(action==='save'){guard.saved();onStatusChange?.(value.hostname?'saved':'notConfigured');}}catch(e){setError(e instanceof Error?e.message:String(e));}finally{guard.lock.current=false;setBusy('');}
  }
  const sameSaved=hostname.trim()===state?.hostname;
  return <section className="deployment-settings">
@@ -30,7 +33,7 @@ export default function DeploymentSettings() {
   </ol>
   <form className="deployment-form" onSubmit={event=>{event.preventDefault();void perform('save');}}>
    <label htmlFor="deployment-hostname">{t('目标域名','Target hostname')}</label>
-   <div className="deployment-input-row"><input id="deployment-hostname" value={hostname} onChange={event=>{setHostname(event.target.value);setSaved(false);}} placeholder="feed.example.com" autoComplete="off" spellCheck={false}/><button type="submit" disabled={!!busy||!state}>{busy==='save'?<LoaderCircle size={16} className="spin"/>:null}{t('保存','Save')}</button><button type="button" className="deployment-check" disabled={!!busy||!state?.hostname||!sameSaved} onClick={()=>void perform('check')}>{busy==='check'?<LoaderCircle size={16} className="spin"/>:<ShieldCheck size={16}/>} {t('检查连接','Check connection')}</button></div>
+   <div className="deployment-input-row"><input id="deployment-hostname" value={hostname} onChange={event=>{guard.mark();setHostname(event.target.value);setSaved(false);}} placeholder="feed.example.com" autoComplete="off" spellCheck={false}/><button type="submit" disabled={!!busy||!state}>{busy==='save'?<LoaderCircle size={16} className="spin"/>:null}{t('保存','Save')}</button><button type="button" className="deployment-check" disabled={!!busy||!state?.hostname||!sameSaved} onClick={()=>void perform('check')}>{busy==='check'?<LoaderCircle size={16} className="spin"/>:<ShieldCheck size={16}/>} {t('检查连接','Check connection')}</button></div>
   </form>
   {saved&&<p className="deployment-success" role="status">{t('已保存。现在可以检查域名连接。','Saved. You can now check the domain connection.')}</p>}
   {error&&<p className="deployment-error" role="alert">{error}</p>}

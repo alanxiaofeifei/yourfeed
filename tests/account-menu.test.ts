@@ -7,6 +7,7 @@ import AccountMenu from '../app/components/AccountMenu';
 import { SidebarPrivacyNote } from '../app/components/Sidebar';
 import { I18nProvider } from '../app/i18n';
 import { translate } from '../shared/locales';
+import {settingsMessages} from '../shared/settings-messages';
 import { LANGUAGE_OPTIONS } from '../shared/language';
 
 const home = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
@@ -16,8 +17,8 @@ const account = readFileSync(new URL('../app/components/AccountMenu.tsx', import
 describe('single account entry and noninteractive privacy context', () => {
   it.each(LANGUAGE_OPTIONS)('renders the privacy note in $value without a second account control', ({ value }) => {
     const html = renderToStaticMarkup(createElement(I18nProvider, { initialLanguage: value, children: createElement(SidebarPrivacyNote) }));
-    expect(html).toContain(translate('私人阅读空间', value));
-    expect(html).toContain(translate('账户与登录管理请使用右上角菜单。', value));
+    expect(html).toContain(settingsMessages[value].privacy);
+    expect(html).not.toContain(translate('账户与登录管理请使用右上角菜单。', value));
     expect(html).not.toMatch(/<button|<a\b|tabindex|role="button"|class="avatar"/);
     expect(html).not.toContain('Only you can see this');
   });
@@ -60,7 +61,7 @@ describe('account session / permanent Getting started wiring regressions', () =>
     for (let ancestor: ts.Node | undefined = launchers[0].parent; ancestor && !ts.isReturnStatement(ancestor); ancestor = ancestor.parent) {
       expect(ts.isConditionalExpression(ancestor) || ts.isBinaryExpression(ancestor)).toBe(false);
     }
-    expect(home.indexOf('tour.launch')).toBeLessThan(home.indexOf("{view === 'settings' ? <section"));
+    expect(home.indexOf('tour.launch')).toBeLessThan(home.indexOf("{visited.current.has('settings')"));
     expect(home).toContain('ready:!!sessionUserId&&sidebarReadyFor===sessionUserId');
     expect(home).toContain('data-tour="home-guide-entry"');
   });

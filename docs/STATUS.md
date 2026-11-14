@@ -1,5 +1,13 @@
 # 当前项目状态
 
+## Issue E / #15（2026-11-15，本地验收完成）
+- [Issue #15](https://github.com/alanxiaofeifei/yourfeed/issues/15) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`、基线 `85d3a82`；执行仓库外 `TASK_E.md`，本轮全部改动未提交、未暂存、未推送、未合并、未部署；无 GitHub 写入或远程 Wrangler，未读取私密目录或真实密钥。
+- 七项及[四语通俗说明](settings-proposals.md)完成：分类证据徽章；偏好/AI 共用保存状态、提交锁、离页与 beforeunload 守卫，草稿仅在本次页面内存保留；AI 基本/高级分层与错误展开聚焦；免费默认/自带 Key 费用和草稿测试说明；YouTube 编辑/精选与接口双向返回；设备/正文/归档安全摘要和下载重试；静态四语设置查找、展开与聚焦。侧栏改为一行非交互阅读隐私说明，身份/退出仅在账户菜单。
+- 保留默认免费通道；仅保存 YouTube Key 不切换 AI 通道。更改模型/地址/密钥使旧测试失效；未配置/读失败不显示已保存。无 schema、鉴权、隔离、权限、自动清理或保留期改动；原有 tour 目标和来源弹窗 focus scope 保留。
+- 最终门禁：Node **24.22.1** / npm **11.21.1**，现有 `package-lock.json` 未改；unit **831/831（67 files）**、typecheck、Cloudflare build、生产模式 e2e **80 passed / 21 opt-in或开发专用 skipped**、截图 **6/6**、性能 `TOUR_PERF_ASSERT=1` **1/1（192 样本）** 全通过。桌面最高 p95 **31.0ms < 100ms**，手机390/CDP4×最高 **51.9ms**；为可绘制帧代理，非物理呈现或 INP。性能资源 SHA256 已与最终 dist 核对。
+- 证据：仓库外 `unit-E.log`、`typecheck-E.log`、`build-E.log`、`e2e-E.log`、`perf-E.log` / `perf-E.json`、`screenshots-E.log`；`phaseE-shots/` 六张均已目视检查（中文桌面搜索/AI基本/存储、中文手机、英文桌面、侧栏与账户）。覆盖四语、失败保留草稿、取消跳转、串行保存、旧测试失效、YouTube 往返、归档重试零新增 AI 请求及 CSS 200% 缩放无横向溢出。
+- 边界：仅本地合成 API/数据与真实 dist；未调用真实 provider，未验证真实设备、读屏、邮件/OAuth或线上。构建仍有既有 lucide/chunk/dynamic-import 提示；工具沿用项目执行环境，费用/活跃上下文统计不可读取，未声称切换模型或压缩。修复了视觉验收发现的初始保存状态矛盾与短关键词误匹配；最终检查 `git diff --check` 通过。
+- 完成记录：仓库外 `E_DONE.md`。下一步仅审阅本地 diff；TASK_E 完成后停止，不部署任何实例。
 
 ## Issue C / #13 检查点（2026-11-15 04:31 UTC+8，已推送并部署 preview）
 - 提交 `3f7ea4e` 已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `3d75e4de`（上一版 `aa2786a0`）。无迁移（复用 `feedback` JSON），仅代码部署：未重传 secret、未重置 preview D1；生产 `yourfeed` 与 `yourfeed-member-001` 未动。
