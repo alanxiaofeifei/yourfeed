@@ -32,3 +32,7 @@
 @media(max-width:800px){.storage-grid{grid-template-columns:minmax(0,1fr)}}
 
 .settings-tab-copy .settings-status{display:block;width:max-content;max-width:100%}
+
+.refresh-settings > label:not(.storage-choice) { display: block; margin-top: 18px; margin-bottom: 8px; font-weight: 600; }
+.refresh-settings > select { width: 100%; max-width: 560px; padding: 10px; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.refresh-settings .storage-choice { margin-top: 20px; }

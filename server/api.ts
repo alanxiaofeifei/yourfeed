@@ -108,7 +108,8 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/usage'&&request.method==='GET')return response(await getUsage(env));
     if(path==='/api/sync'&&request.method==='POST'){
       const body=await readJson(request);const {syncSources}=await import('./ingest');
-      return response(await syncSources(env,{force:body.force===true,limit:Math.min(5,Math.max(1,Number(body.limit)||3))}));
+      const {backgroundStatus}=await import('./background');const policy=await backgroundStatus(env);
+      return response(await syncSources(env,{intervalHours:policy.intervalHours,force:body.force===true,limit:Math.min(5,Math.max(1,Number(body.limit)||3))}));
     }
     if(path==='/api/import'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.url!=='string')throw new HttpError(400,'请填写文章、帖子或视频链接。');

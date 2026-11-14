@@ -1,16 +1,21 @@
 import {getState,setState,getUsage,type Env} from './db';
 import {HttpError} from './security';
 
-export interface BackgroundPolicy {enabled:boolean;aiEnabled:boolean;intervalHours:number;}
+export type {RefreshPolicy as BackgroundPolicy} from '../shared/refresh-policy';
+import {effectiveRefreshMode,isRefreshMode,normalizeRefreshPolicy,refreshDue,type RefreshPolicy} from '../shared/refresh-policy';
 export async function backgroundStatus(env:Env){
- let policy:Partial<BackgroundPolicy>={};try{policy=JSON.parse(await getState(env,'background:policy')||'{}');}catch{}
- return {enabled:policy.enabled===true,aiEnabled:policy.aiEnabled===true,intervalHours:Math.max(6,Number(policy.intervalHours)||6),schedulerConfigured:env.BACKGROUND_SCHEDULE_CONFIGURED==='true',lastRun:await getState(env,'background:last-run'),lastResult:await getState(env,'background:last-result'),hostingMode:env.HOSTING_MODE==='hosted'?'hosted':'personal'};
+ let stored:Partial<RefreshPolicy>={};try{stored=JSON.parse(await getState(env,'background:policy')||'{}')||{};}catch{}
+ const policy=normalizeRefreshPolicy(stored),schedulerConfigured=env.BACKGROUND_SCHEDULE_CONFIGURED==='true';
+ return {...policy,effectiveRefreshMode:effectiveRefreshMode(policy.refreshMode,schedulerConfigured),schedulerConfigured,lastRun:await getState(env,'background:last-run'),lastResult:await getState(env,'background:last-result'),hostingMode:env.HOSTING_MODE==='hosted'?'hosted':'personal'};
 }
 export async function saveBackgroundPolicy(env:Env,input:Record<string,unknown>,ownerId?:string){
  if(input.enabled!==undefined&&typeof input.enabled!=='boolean'||input.aiEnabled!==undefined&&typeof input.aiEnabled!=='boolean')throw new HttpError(400,'后台更新开关格式无效。');
+ if(input.refreshMode!==undefined&&!isRefreshMode(input.refreshMode))throw new HttpError(400,'刷新方式无效。');
  const old=await backgroundStatus(env);const intervalHours=input.intervalHours===undefined?old.intervalHours:Number(input.intervalHours);
- if(!Number.isInteger(intervalHours)||intervalHours<6||intervalHours>168)throw new HttpError(400,'后台更新间隔应为 6–168 小时。');
- const next={enabled:input.enabled===undefined?old.enabled:input.enabled,aiEnabled:input.aiEnabled===undefined?old.aiEnabled:input.aiEnabled,intervalHours};
+ if(!Number.isInteger(intervalHours)||intervalHours<1||intervalHours>168)throw new HttpError(400,'刷新间隔应为 1–168 小时。');
+ // Legacy clients can still save the old enabled switch. Explicit mode takes precedence.
+ const refreshMode=isRefreshMode(input.refreshMode)?input.refreshMode:input.enabled===undefined?old.refreshMode:input.enabled?'scheduled':'on_open';
+ const next=normalizeRefreshPolicy({refreshMode,aiEnabled:input.aiEnabled===undefined?old.aiEnabled:input.aiEnabled===true,intervalHours});
  if(next.aiEnabled&&!ownerId)throw new HttpError(400,'请登录后设置后台 AI。');
  if(ownerId)await setState(env,'background:owner',ownerId);
  await setState(env,'background:policy',JSON.stringify(next));return backgroundStatus(env);
@@ -22,12 +27,15 @@ export async function runBackground(env:Env,now=Date.now()){
  if(env.HOSTING_MODE==='hosted'){const {assertHostedAdmission}=await import('./hosted');await assertHostedAdmission(env);}
  // Cache housekeeping is separate from opt-in network fetching and paid AI.
  const {cleanupRetention}=await import('./retention');await cleanupRetention(env,{limit:5});
- if(!policy.enabled)return {ran:false,reason:'disabled'};
- const previous=Date.parse(policy.lastRun||'');if(Number.isFinite(previous)&&now-previous<policy.intervalHours*3600000)return {ran:false,reason:'not-due'};
+ if(policy.refreshMode!=='scheduled'||!policy.enabled)return {ran:false,reason:'disabled'};
+ if(!policy.schedulerConfigured)return {ran:false,reason:'scheduler-unavailable'};
+ const lastSync=await getState(env,'last-sync');
+ const lastRefresh=Date.parse(lastSync||'')>Date.parse(policy.lastRun||'')||!policy.lastRun?lastSync:policy.lastRun;
+ if(!refreshDue(lastRefresh,policy.intervalHours,now))return {ran:false,reason:'not-due'};
  const claimed=await env.DB.prepare("INSERT INTO meta(key,value) VALUES ('background:lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(meta.value AS INTEGER)<?").bind(String(now+60000),now).run();
  if(!claimed.meta.changes)return {ran:false,reason:'busy'};
  try{
-  const {syncSources}=await import('./ingest');const sync=await syncSources(env,{limit:1});
+  const {syncSources}=await import('./ingest');const sync=await syncSources(env,{limit:1,intervalHours:policy.intervalHours});
   let analyzed=0;
   // Independently opt-in, personal credential policy and existing atomic budget
   // reservations still apply. Missing keys never fall through to owner keys.

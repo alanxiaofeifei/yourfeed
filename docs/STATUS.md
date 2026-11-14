@@ -1,5 +1,14 @@
 # 当前项目状态
 
+## Issue F / #16（2026-11-15，本地验收完成）
+- [Issue #16](https://github.com/alanxiaofeifei/yourfeed/issues/16) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`，基线 `31d4924`；执行仓库外 `TASK_F.md`。所有改动未暂存、未提交、未推送、未合并、未部署；无 GitHub 写入、远程 Wrangler、真实 provider 请求或私密目录读取。
+- 存储页四语刷新方式（manual / on_open 默认 / scheduled）、1/2/4/6/12/24 小时选择（接口 1..168），复用 meta、兼容旧 enabled。首页先读策略，手动模式不自动 sync，失败暂停自动刷新；保存中保持选择、失败恢复。来源自身的六小时硬编码也已接入所选间隔；保留分批、退避、预算和现有权限/隔离，无迁移或依赖改动。
+- 复用 `BACKGROUND_SCHEDULE_CONFIGURED`（默认 false）：无 cron 时禁用后台选项、明确提示并将已存 scheduled 的有效方式回退为 on_open。仅现有 tick 到期后抓取，每 tick 仍为 1 来源 / 5 新内容 / 最多 1 AI 分析；四语明确抓取免费、自带 Key 服务商计费及离开期间的后台 AI 费用。未新增或更改任何 cron；[ADR 0002](adr/0002-refresh-scheduling.md) 记录运营者提供的 1/5 槽位现状，中央单 cron dispatcher 仅提案，须 Alan 批准。
+- 最终门禁：Node **24.22.1** / npm **11.21.1**、现有锁文件；unit **858/858（68 files）**、typecheck、Cloudflare build、生产模式 e2e **90 passed / 25 opt-in 或开发专用 skipped**、性能 **1/1（192 样本，TOUR_PERF_ASSERT=1）**、截图 **4/4**、`git diff --check` 全通过。首轮 e2e 发现后台 AI checkbox 等待保存时回跳，已修复并完整重跑；仅截图用合成状态/卡片裁切随后调整，截图已另行复验。
+- 手机延迟短查：D→C→E 的 tour / Spotlight 代码未改；Next/Skip/Back 状态在 TourController 内，基准步骤未挂载设置页，Exit 会改变 Home 的 active 状态。未证实漂移根因，未改 tour 或放宽门槛。最高 p95：D **37.0** → C **47.1** → E **51.9** → F **50.4ms**（390/CDP4×，仅记录），F 桌面 **30.9ms < 100ms**；均为可绘制帧代理，非真实设备/INP，不将微小下降归因于修复。性能 JSON 的 SHA256 已与最终 dist 核对。
+- 证据在仓库外：`unit-F.log`、`typecheck-F.log`、`build-F.log`、`e2e-F.log`、`perf-F.log` / `perf-F.json`、`screenshots-F.log`；`phaseF-shots/` 四张真实组件合成截图（中文桌面无 cron / 有 cron、中文手机、英文桌面）已目视检查。完成记录 `F_DONE.md`。未验证线上 cron、Free CPU/容量或真实手机；下一步仅审阅本地 diff，中央调度及任何实例发布仍待 Alan 明确批准。
+
+
 
 ## Issue E / #15 检查点（2026-11-15 05:05 UTC+8，已推送并部署 preview）
 - 提交 `88a2245` 已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `63b98714`（上一版 `3d75e4de`）。无迁移，仅代码部署：未重传 secret、未重置 preview D1；生产 `yourfeed` 与 `yourfeed-member-001` 未动。

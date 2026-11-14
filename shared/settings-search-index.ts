@@ -24,6 +24,7 @@ export const settingsSearchIndex=[
  item('profile','profile-summary-language','AI 摘要语言','AI summary language','AI 摘要語言','Ngôn ngữ tóm tắt AI'),
  item('ai','youtube-key','YouTube 密钥 频道','YouTube key channels','YouTube 金鑰 頻道','Khóa YouTube kênh'),
  item('storage','storage-summary','缓存 存储 归档 备份','Cache storage archive backup','快取 儲存 歸檔 備份','Bộ nhớ đệm lưu trữ sao lưu'),
+ item('storage','refresh-mode','刷新方式 手动 打开时 后台 定时 间隔','Refresh mode manual on open background scheduled interval','重新整理方式 手動 開啟時 背景 定時 間隔','Cách cập nhật thủ công khi mở nền theo lịch khoảng'),
  item('storage','storage-device','设备缓存','Device cache','裝置快取','Đệm thiết bị'),
  item('storage','storage-retention','正文保留 到期提醒','Text retention expiry reminders','內文保留 到期提醒','Lưu giữ văn bản nhắc hết hạn'),
  item('storage','storage-archive','下载归档 恢复 导出','Download archive restore export','下載歸檔 復原 匯出','Tải tệp lưu trữ khôi phục xuất'),

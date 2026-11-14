@@ -62,6 +62,7 @@ export async function fixture(page, { newAccount = false, populated = false, pro
     else if (p === '/api/sources') data = { sources: populated ? [source] : [] };
     else if (p === '/api/sources/recommendations') data = { recommendations: [{ ...source, starter: true, language: 'en', contentType: 'article', description: { en: 'Synthetic catalog feed', zh: '合成目录来源' }, verification: { status: 'unverified', coverage: 'unknown' } }] };
     else if (p === '/api/briefing') data = { date: '2026-11-12', timeZone: 'UTC', window: 'empty', items: [] };
+    else if (p === '/api/background') data = {refreshMode:'on_open',effectiveRefreshMode:'on_open',enabled:false,aiEnabled:false,intervalHours:6,schedulerConfigured:false};
     else if (p === '/api/storage') data = { enabled: false, expiringCount: 0, expiredCount: 0 };
     else if (p === '/api/sync') data = { processed: 0, pending: 0, results: [] };
     else if (['/api/feed', '/api/feed/batch', '/api/library'].includes(p)) data = { items: populated ? [item] : [], total: populated ? 1 : 0, sources: populated ? 1 : 0, nextCursor: null, lastUpdated: new Date().toISOString() };
