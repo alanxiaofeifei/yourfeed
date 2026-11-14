@@ -1,4 +1,4 @@
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {Miniflare} from 'miniflare';
 import {readFileSync,readdirSync} from 'node:fs';
 import {handleApi} from '../server/api';
@@ -24,7 +24,8 @@ it('skips add no interests; manual entry preserves unrelated profile fields and 
 
 let mf:Miniflare,env:Env,other:Env;
 beforeAll(async()=>{mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("fixture")}}',d1Databases:{DB:'preference-cards',OTHER:'preference-isolated'},compatibilityDate:'2026-05-15'});env={DB:await mf.getD1Database('DB') as unknown as Env['DB'],AUTH_MODE:'sites'};other={...env,DB:await mf.getD1Database('OTHER') as unknown as Env['DB']};for(const target of [env,other])for(const file of readdirSync('drizzle').filter(file=>file.endsWith('.sql')).sort())for(const sql of readFileSync('drizzle/'+file,'utf8').split('--> statement-breakpoint').map(sql=>sql.trim()).filter(Boolean))await target.DB.exec(sql.replace(/\r?\n/g,' '));},60000);
-beforeEach(async()=>{await env.DB.prepare('DELETE FROM settings').run();await initialize(env);});
+afterEach(()=>vi.unstubAllGlobals());
+beforeEach(async()=>{vi.stubGlobal('fetch',vi.fn(async()=>new Response('',{status:503}))); await env.DB.prepare('DELETE FROM settings').run();await initialize(env);});
 afterAll(async()=>mf?.dispose());
 const call=(path:string,method='GET',body?:unknown,extra:Record<string,string>={})=>handleApi(new Request(`https://reader.test/api/${path}`,{method,headers:{'Content-Type':'application/json',Origin:'https://reader.test','oai-authenticated-user-id':'owner','Accept-Language':'vi',...extra},...(body===undefined?{}:{body:JSON.stringify(body)})}),env);
 describe('preference state in existing local D1 settings',()=>{
@@ -50,5 +51,5 @@ describe('preference state in existing local D1 settings',()=>{
   env.PRIVATE_BACKUP_LOCK='true';env.PRIVATE_BACKUP_GRANT=String(Date.now()+60000)+':'+'a'.repeat(43);expect((await call('preference-cards','PUT',{expectedRevision:0,state})).status).toBe(503);delete env.PRIVATE_BACKUP_LOCK;delete env.PRIVATE_BACKUP_GRANT;
  });
  it('never overwrites corrupt stored progress',async()=>{await env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?)').bind(preferenceKey('owner'),'{}').run();expect((await call('preference-cards')).status).toBe(409);expect((await call('preference-cards','PUT',{expectedRevision:0,state:newPreferenceState('en')})).status).toBe(409);});
- it('without AI credentials returns the curated bank and writes no sources or profile',async()=>{const response=await call('preference-cards/generate','POST',{});expect(response.status).toBe(200);expect(await response.json()).toEqual({source:'curated',questions:curatedQuestions('vi')});expect(await env.DB.prepare('SELECT COUNT(*) n FROM settings').first('n')).toBe(0);});
+ it('when both free endpoints fail returns the curated bank and writes no sources or profile',async()=>{const response=await call('preference-cards/generate','POST',{});expect(response.status).toBe(200);expect(await response.json()).toEqual({source:'curated',questions:curatedQuestions('vi')});expect(await env.DB.prepare('SELECT COUNT(*) n FROM settings').first('n')).toBe(0);});
 });

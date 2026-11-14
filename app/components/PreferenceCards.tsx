@@ -4,6 +4,7 @@ import {createPortal} from 'react-dom';
 import {useI18n} from '../i18n';
 import {TOPIC_LABELS,type UserProfile} from '../../shared/profile';
 import type {Source} from '../../shared/types';
+import {freeAiMessages} from '../../shared/free-ai-messages';
 import {preferenceMessages} from '../../shared/preference-messages';
 import {curatedQuestions,newPreferenceState,preferenceStateSchema,questionsSchema,preferenceSummary,preferenceProfile,CARD_TOPICS,type PreferenceState} from '../../shared/preference-cards';
 import './PreferenceCards.css';
@@ -87,6 +88,7 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
      <p className="preference-intro">{m.intro}</p><h3>{q.prompt}</h3>
      <div className="preference-choices">{(['A','B'] as const).map((choice,index)=>{const option=choice==='A'?q.optionA:q.optionB;return <button type="button" data-pref-choice={choice} key={choice} disabled={busy||error} aria-pressed={state.answers[q.id]===choice} onClick={()=>choose(choice)}><span className="preference-number">0{index+1}</span><strong>{option.label}</strong><span>{option.subtitle}</span></button>;})}</div>
      <div className="preference-controls"><button type="button" data-pref="back" disabled={busy||!state.position} onClick={()=>void run(async()=>{await persist({...draft.current,position:state.position-1});})}>{m.back}</button><button type="button" data-pref="skip" disabled={busy||error} onClick={()=>choose('skipped')}>{m.skip}</button></div>
+     {state.position===0&&aiConfigured&&<p className="field-help">{freeAiMessages[language].notice}</p>}
      {state.position===0&&aiConfigured&&<button type="button" data-pref="generate" disabled={busy} onClick={generate}>{generating?m.generating:m.ai}</button>}
     </>:<>
      <p className="preference-progress" aria-live="polite">10 / 10 · {m.review}</p><progress value={10} max={10}/><p>{m.preview}</p><div className="preference-topic-summary" aria-label={m.topics}>{Object.keys(summary.topicWeights).map(topic=><span key={topic}>{TOPIC_LABELS[topic as keyof typeof TOPIC_LABELS][language]} {Math.round(summary.topicWeights[topic as keyof typeof TOPIC_LABELS]!*100)}%</span>)}</div>

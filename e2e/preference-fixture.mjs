@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {expect} from 'playwright/test';
 import {fixture} from './fixture.mjs';
 const bank=JSON.parse(readFileSync(new URL('../shared/preference-bank.json',import.meta.url),'utf8'));
-export async function preferenceFixture(page,{language='en',ai=false,generation='valid',failSave=false}={}){
+export async function preferenceFixture(page,{language='en',ai=false,free=false,generation='valid',failSave=false}={}){
  const f=await fixture(page,{language,populated:true});
  let state={revision:0,answers:{},source:'curated',questions:structuredClone(bank[language]),language,position:0,manualInterest:'',manualTopics:[]};
  let sources=[{id:'existing-github',name:'GitHub Blog',platform:'rss',locator:'https://github.blog/feed/',topics:['code'],enabled:true}];
@@ -21,6 +21,7 @@ export async function preferenceFixture(page,{language='en',ai=false,generation=
   }
   if(p==='/api/preference-cards/generate'){
    generations.push('generate');if(generation==='timeout'){await new Promise(resolve=>setTimeout(resolve,6500));return route.fulfill({json:{source:'curated',questions:bank[language]}}).catch(()=>{});}
+   if(generation==='curated')return route.fulfill({json:{source:'curated',questions:bank[language]}});
    if(generation==='429')return route.fulfill({status:429,json:{error:'Synthetic limit'}});
    const questions=structuredClone(bank[language]);if(generation==='invalid')questions[0].optionA.sourceIds=['invented'];else questions[0].prompt='Synthetic AI question for your interests?';
    return route.fulfill({json:{source:'ai',questions}});
@@ -36,7 +37,7 @@ export async function preferenceFixture(page,{language='en',ai=false,generation=
    }
    return route.fulfill({json:{created,duplicates,errors:[]}});
   }
-  if(p==='/api/settings')return route.fulfill({json:{provider:'openai',model:'gpt-6.1-sol',enabled:false,monthlyBudget:20,dailyLimit:20,configured:ai,providers:[],youtubeConfigured:false}});
+  if(p==='/api/settings')return route.fulfill({json:{provider:'openai',model:'gpt-6.1-sol',enabled:false,monthlyBudget:20,dailyLimit:20,configured:ai,freeAiAvailable:free,usingFreeAi:free,providers:[],youtubeConfigured:false}});
   return route.fallback();
  });
  await page.reload();

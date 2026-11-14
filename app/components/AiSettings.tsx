@@ -6,10 +6,13 @@ import type { Provider, ProviderConfig, Usage } from '../../shared/types';
 import { PROVIDERS, PROVIDER_METADATA } from '../../shared/providers';
 import './AiSettings.css';
 import { useI18n } from '../i18n';
+import {freeAiMessages} from '../../shared/free-ai-messages';
 import {getOnboardingMessages} from '../../shared/onboarding-messages';
 import type {TourBusinessEvent} from './onboarding/navigation';
 
 export type Settings = ProviderConfig & {
+  freeAiAvailable?:boolean;
+  usingFreeAi?:boolean;
   youtubeConfigured?: boolean;
   youtubeKeyLast4?: string;
   providers?: {provider:Provider;configured:boolean;keyLast4?:string}[];
@@ -64,7 +67,7 @@ function endpointKey(value:string|undefined):string {
 }
 
 export default function AiSettings({settings,onChange,usage,notify,reload,onDirtyChange,onBusinessChange}:{onDirtyChange?:(dirty:boolean)=>void;onBusinessChange?:(event:TourBusinessEvent)=>void;settings:Settings;onChange:(value:Settings)=>void;usage:Usage;notify:(value:string)=>void;reload:()=>Promise<void>}) {
-  const {t,language}=useI18n();
+  const {t,language}=useI18n();const freeMessages=freeAiMessages[language];
   const [needsReauth,setNeedsReauth]=useState(false);
   const localizedError=(cause:unknown)=>{if(cause instanceof SettingsRequestError&&cause.status===401){setNeedsReauth(true);return t('请重新验证身份后再修改密钥或敏感设置。','Reauthenticate before changing API keys or sensitive settings.');}if(cause instanceof SettingsRequestError&&cause.diagnostic){const diagnostic=cause.diagnostic;const text=diagnosticMessages[diagnostic.code];if(diagnostic.transport==='dns')return t('服务商域名无法解析。请检查 Base URL 与部署服务器的 DNS 网络。','The provider domain could not be resolved. Check the Base URL and deployment DNS.');if(diagnostic.transport==='tls')return t('无法与服务商建立安全连接。请检查 HTTPS 证书和部署网络。','A secure connection could not be established. Check the provider certificate and deployment network.');if(text)return t(...text);}const message=messageOf(cause);if(message==='REQUEST_FAILED')return t('操作暂未完成，请稍后重试。','The request could not be completed. Please try again.');if(language==='zh'||!/[\u3400-\u9fff]/.test(message))return message;return /预算|数量|上限/.test(message)?t('已达到预算或每日分析上限。','The budget or daily analysis limit has been reached.'):/密钥|权限/.test(message)?t('请检查 API 密钥与模型权限。','Check the API key and model permissions.'):/地址|HTTPS|内网|域名|DNS/.test(message)?t('请检查公开 HTTPS 接口；地址改变后需要重新输入密钥。','Check the public HTTPS endpoint and enter its API key again if the address changed.'):t('请求失败，请检查接口地址、模型、密钥与服务商控制台后重试。','The request failed. Check the endpoint, model, credentials and provider dashboard, then try again.');};
   const [draft,setDraft]=useState<AdvancedConfig>(settings);
@@ -121,18 +124,25 @@ export default function AiSettings({settings,onChange,usage,notify,reload,onDirt
     if(!validate()){setSaveStatus('error');return;}
     setSaving(true);setSaveStatus('saving');
     try{
-      const data=await request<Settings>('/api/settings',{...modelPayload(),enabled:draft.enabled,monthlyBudget:draft.monthlyBudget,dailyLimit:draft.dailyLimit,youtubeKey:youtubeKey.trim()||undefined,testReceipt:testReceipt.current?.revision===draftRevision.current?testReceipt.current.value:undefined},'PUT');
+      const data=await request<Settings>('/api/settings',{...modelPayload(),aiChannel:'own',enabled:draft.enabled,monthlyBudget:draft.monthlyBudget,dailyLimit:draft.dailyLimit,youtubeKey:youtubeKey.trim()||undefined,testReceipt:testReceipt.current?.revision===draftRevision.current?testReceipt.current.value:undefined},'PUT');
       testReceipt.current=null;dirty.current=false;onDirtyChange?.(false);onBusinessChange?.('settings-saved');setSaveStatus('saved');setNeedsReauth(false);onChange(data);setKey('');setYoutubeKey('');setTestDiagnostic(null);setTestResult('');setError('');
       notify(t('设置已安全保存。','Settings saved securely.'));
       try{await reload();}catch{notify(t('设置已保存，用量信息暂未刷新。','Settings were saved. Usage information could not be refreshed.'));}
     }catch(cause){const message=localizedError(cause);setSaveStatus('error');setError(message);notify(message);}finally{setSaving(false);}
   };
   const test=async()=>{if(saving||testing||!validate(true))return;const testedRevision=draftRevision.current;testReceipt.current=null;setTesting(true);setTestDiagnostic(null);setTestResult('');try{const result=await request<{message?:string;testReceipt?:string}>('/api/test-provider',modelPayload());if(testedRevision!==draftRevision.current)return;if(typeof result.testReceipt==='string'&&result.testReceipt.length>0&&result.testReceipt.length<=16384){testReceipt.current={value:result.testReceipt,revision:testedRevision};dirty.current=true;onDirtyChange?.(true);setSaveStatus('unsaved');}setNeedsReauth(false);const message=t('连接成功，模型可以使用。','Connection successful. The model is available.');setTestResult(message);notify(message);onBusinessChange?.('provider-tested');try{await reload();}catch{notify(t('连接测试成功，用量信息暂未刷新。','The connection test succeeded. Usage information could not be refreshed.'));}}catch(cause){if(testedRevision!==draftRevision.current)return;const message=localizedError(cause);setTestDiagnostic(cause instanceof SettingsRequestError?cause.diagnostic||null:null);setTestResult(message);notify(message);}finally{setTesting(false);}};
+  const restoreDefault=async()=>{if(saving||testing)return;setSaving(true);try{const data=await request<Settings>('/api/settings',{restoreDefaultAi:true},'PUT');testReceipt.current=null;draftRevision.current++;dirty.current=false;onDirtyChange?.(false);setSaveStatus('saved');setKey('');setYoutubeKey('');setTestResult('');setTestDiagnostic(null);setError('');setNeedsReauth(false);onChange(data);notify(freeMessages.restored);}catch(cause){setError(localizedError(cause));}finally{setSaving(false);}};
   const clearKey=async(youtube=false)=>{testReceipt.current=null;draftRevision.current++;setSaving(true);try{const data=await request<Settings>('/api/settings',{provider:draft.provider,...(youtube?{clearYoutubeKey:true}:{clearKey:true})},'PUT');onChange(data);if(youtube)setYoutubeKey('');else setKey('');notify(t("密钥已移除。","API key removed."));await reload();}catch(cause){notify(localizedError(cause));}finally{setSaving(false);}};
   return <section className="management-page settings-page ai-settings-page">
     <div className="welcome-eyebrow"><span className="amber-dash"/>{t('专为你而来','MADE TO FIT YOU')}</div>
     <p className="tour-cost-warning">{getOnboardingMessages(language).help.costWarning}</p>
     <div className="management-heading"><div><h1>{t("你的模型，你的选择。","Your models. Your choice.")}</h1><p>{t("连接常用服务，或接入自己的 OpenAI 兼容提供商。","Connect a familiar service or your own OpenAI-compatible provider.")}</p></div><button type="button" className="primary-button" onClick={()=>void save()} disabled={saving||testing||!dirty.current}>{saving?<Loader2 size={15} className="spin"/>:<Check size={16}/>}{t("保存设置","Save settings")}</button></div>
+    {settings.freeAiAvailable&&<section className="settings-card free-ai-channel" aria-label={freeMessages.label}>
+      <h2>{freeMessages.label}</h2><p>{freeMessages.notice}</p>
+      {settings.usingFreeAi&&<input aria-label={freeMessages.label} className="form-input" type="password" value="••••••••" disabled readOnly onCopy={event=>event.preventDefault()} onCut={event=>event.preventDefault()}/>}
+      <p className="field-help">{freeMessages.preserve}</p><button data-free-ai="restore" type="button" className="small-button" disabled={saving||testing||!!settings.usingFreeAi} onClick={()=>void restoreDefault()}>{freeMessages.restore}</button>
+      <p className="field-help">{freeMessages.own}: {freeMessages.ownHelp}</p>
+    </section>}
     {error&&<div className="ai-config-error" role="alert">{error}</div>}{needsReauth&&<p className="ai-reauth-notice"><ShieldCheck size={14}/><a href="/login?reauth=1">{t('重新验证身份，继续配置','Reauthenticate to continue setup')}</a></p>}
     <fieldset className="ai-config-fields" disabled={saving||testing}><div className="settings-grid"><div className="settings-main">
       <section className="settings-card"><div className="settings-card-heading"><span className="settings-symbol"><Sparkles size={19}/></span><div><h2>{t("AI 阅读助手","AI reading assistant")}</h2><p>{t("生成要点、个人关联与来源引用。","Summaries, personal relevance, and source references.")}</p></div><button type="button" className={`toggle ${draft.enabled?'on':''}`} role="switch" aria-checked={draft.enabled} aria-label={t("启用 AI 阅读","Enable AI reading")} onClick={()=>update('enabled',!draft.enabled)}><span/></button></div>

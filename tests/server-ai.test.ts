@@ -119,7 +119,7 @@ describe('AI access, provider isolation and accounting',()=>{
     fetchMock.mockResolvedValue(new Response(JSON.stringify({data:[{id:'another-model'}]})));expect(await probeProviderModels(state.config,state.key!)).toEqual({reachable:true,status:200,modelListed:false});expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('GET');
   });
   it('does not call a model when the key is missing or AI is disabled',async()=>{
-    state.key=undefined;await expect(analyzeItem(env,item)).rejects.toThrow('密钥');
+    state.key=undefined;await expect(analyzeItem(env,item)).rejects.toThrow('免费公开 AI');
     state.key='test-secret';state.config.enabled=false;await expect(analyzeItem(env,item)).rejects.toThrow('启用');
     expect(fetchMock).not.toHaveBeenCalled();expect(db.reserveUsage).not.toHaveBeenCalled();
   });

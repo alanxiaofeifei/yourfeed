@@ -13,6 +13,6 @@ export interface ContentItem { id: string; kind: Kind; platform: string; sourceI
  dateSource?: 'published'|'updated'|'dc-date'|'missing'|'imported';
 }
 export interface Feedback { liked?: boolean; saved?: boolean; read?: boolean; dismissed?: boolean; }
-export interface ProviderConfig { provider: Provider; model: string; providerName?: string; baseUrl?: string; protocol?: 'responses'|'chat-completions'; temperature?: number; maxOutputTokens?: number; timeoutSeconds?: number; responseFormat?: 'json_schema'|'json_object'|'none'; reasoningEffort?: string; inputPricePerMillion?: number; outputPricePerMillion?: number; key?: string; keyLast4?: string; configured?: boolean; enabled: boolean; monthlyBudget: number; dailyLimit: number; }
+export interface ProviderConfig { aiChannel?: 'free'|'own'; provider: Provider; model: string; providerName?: string; baseUrl?: string; protocol?: 'responses'|'chat-completions'; temperature?: number; maxOutputTokens?: number; timeoutSeconds?: number; responseFormat?: 'json_schema'|'json_object'|'none'; reasoningEffort?: string; inputPricePerMillion?: number; outputPricePerMillion?: number; key?: string; keyLast4?: string; configured?: boolean; enabled: boolean; monthlyBudget: number; dailyLimit: number; }
 export interface Usage { month: string; cost: number; inputTokens: number; outputTokens: number; analyzedToday: number; reserved?: number; }
 export interface FeedResponse { items: ContentItem[]; total: number; sources: number; lastUpdated?: string; mode: Mode; }

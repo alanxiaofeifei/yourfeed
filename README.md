@@ -37,6 +37,7 @@ Each deployment is independent: it does not copy the developer’s Cloudflare in
 - English, Simplified Chinese, Traditional Chinese (Taiwan), and Vietnamese UI, a personal onboarding profile, and three editable starting directions: IT & AI practice, developers & creators, and knowledge explorer.
 - RSS, public GitHub stars, YouTube metadata with your API key, best-effort Bilibili updates, and link imports.
 - Optional AI reading through OpenAI, DeepSeek, GLM, Google AI Studio (Gemini), Groq, NVIDIA NIM, Cerebras, or an HTTPS compatible provider. Provider/model selection is explicit; daily limits, budget reservations and analysis caching bound usage. Prices and upstream subscriptions are separate from hosting.
+- Without your own AI connection, explicit preference questions, source assistance, profile advice and single-item reading can try a keyless free public channel. It is best effort, limited to 10 tasks per owner/day, and may fall back to curated questions or plain reading. AI settings can restore the default while keeping saved keys encrypted. Automatic analysis and connection tests require your own connection.
 - Owner-only standalone sign-in, server-side encrypted API keys, and an optional ChatGPT Sites adapter.
 - A domain guide checks public DNS, HTTPS and this instance. It never collects Cloudflare management tokens or changes your sign-in origin.
 

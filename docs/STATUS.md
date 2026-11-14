@@ -1,5 +1,12 @@
 # 当前项目状态
 
+## Issue D / #14（2026-11-15，仅本地，未提交或部署）
+- 入口：[Issue #14](https://github.com/alanxiaofeifei/yourfeed/issues/14) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`，基线 `bebe8dc`（含 `354b244`）。任务 `TASK_D2.md` 禁止 commit/push、GitHub 写入与远程 Wrangler；本轮无迁移、鉴权、隔离或权限改动，未读取私密目录。
+- 默认免 key 服务端通道 OVHcloud → Pollinations → 精选题库/普通阅读，覆盖显式偏好出题、来源辅助、画像及单篇阅读；不用于自动/后台分析或连接测试。固定请求构造导出在 `server/free-ai.ts`，过滤 reasoning、校验 JSON、限制响应大小；每端点 isolate 冷却 30 秒并尊重 Retry-After，既有 meta 原子限制每独立单所有者实例每天 10 次。偏好出题保持服务端总计 5 秒 / 前端 6 秒回退，其他显式免费请求总计 8 秒。
+- 四语免费/失败/自带 key 费用告知、不可复制的掩码字段、恢复默认（保留加密密钥），主动保存可重新选择自带连接。实现与限制见 [first-use-onboarding.md](first-use-onboarding.md)。工具沿用本项目已验证执行环境，实际费用/上下文占用不可读取，未声称切换模型。
+- Box 有意实测各 1 次：OVH 200 / 18.326s、Pollinations 200 / 4.483s，均有效 JSON 且剥离 reasoning。首轮旧来源 API 测试遗漏 mock 另产生 2 次合成请求尝试，已补 mock，累计 4 次后停止；不代表 Cloudflare 出口或线上可用性。仓库外 `live-D.json` 保存实测元数据。
+- 最终门禁（Node 24.22.1 / npm 11.21.1，现有 package-lock）：unit **778/778（65 files）**、typecheck、Cloudflare build、生产 e2e **61 passed / 11 skipped**、性能 `TOUR_PERF_ASSERT=1` **1/1（192 样本）**、截图 **2/2** 与 `git diff --check` 全通过。桌面四动作两种网络场景 p95 最高 31.5ms（门槛 100ms），手机 390/CDP4× 最高 37.0ms；这是可绘制帧代理，不是物理呈现。仓库外 `unit-D.log`、`typecheck-D.log`、`build-D.log`、`e2e-D.log`、`perf-D.log`、`screenshots-D.log`、`perf-D.json` 和 `phaseD-shots/`（中文桌面/手机设置，已目视检查）。所有最终单元网络与浏览器 API 均 mock；Cloudflare 出口、真实移动设备及生产尚未验证。任务完成记录见仓库外 `D_DONE.md`；下一步审阅本地 diff，运营者可复用导出模块做另行授权的 Cloudflare 出口探测。本轮不提交、不推送、不部署。
+
 ## Arrow 修复 + Issue B / #12（2026-11-15，已推送并部署 preview）
 - 检查点（2026-11-15 03:18 UTC+8）：提交 `354b244` 已推送到 PR #8，并部署到 preview `yourfeed-onboarding-preview` 版本 `26c055d7`（上一版 `be703246`），仅代码部署：未重传 secret、未迁移、未重置 preview D1；线上 `/api/health` 200、新卡片资源已确认。生产 `yourfeed` 与 `yourfeed-member-001` 未动。工具：Codex CLI exec，gpt-6.1-sol，reasoning high。下一步：Alan 审阅预览后做 C（不喜欢按钮）/ D / E / F。
 - 分支 `feat/first-use-onboarding` / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8) / [Issue #12](https://github.com/alanxiaofeifei/yourfeed/issues/12)，基线 `6d15de1`；未改生产或成员配置。

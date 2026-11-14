@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,Loader2,Sparkles} from 'lucide-react';
 import type {Language,UserProfile} from '../../shared/profile';
 import type {ProfileAdviceBasis,ProfileAdviceResponse,ProfileAdviceResult} from '../../shared/profile-advice';
+import {freeAiMessages} from '../../shared/free-ai-messages';
 import {useI18n} from '../i18n';
 import './ProfileAdvice.css';
 
@@ -25,7 +26,7 @@ export default function ProfileAdvice({profile,aiConfigured,onOpenAiSettings,onU
       const response=await fetch('/api/profile/advice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile,language}),signal:controller.signal});
       const data=await response.json() as ProfileAdviceResponse&{error?:string};
       if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'AI 画像建议暂时无法生成，请稍后重试。');
-      if(data.needsConfiguration){setNeedsConfiguration(true);return;}
+      if(data.needsConfiguration){setError(freeAiMessages[language].fallback);return;}
       if(!data.advice||typeof data.advice.description!=='string')throw new Error('AI 画像建议格式不完整或缺少依据，请重试；偏好没有被更改。');
       setResult({value:data,snapshot:inputSnapshot});
     }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'AI 画像建议暂时无法生成，请稍后重试。');}
@@ -34,6 +35,7 @@ export default function ProfileAdvice({profile,aiConfigured,onOpenAiSettings,onU
   return <div className="profile-advice">
     <div className="profile-advice-intro"><span className="profile-advice-icon"><Sparkles size={22} aria-hidden="true"/></span><div><h3>{t('让 AI 帮你看看当前方向','Let AI reflect on your direction')}</h3><p>{t('根据当前偏好草稿、已启用来源的主题和有限的内容反馈，生成一份兴趣画像与下一步建议。','Generate a preference portrait and next-step suggestions from your current draft, enabled source topics, and a limited feedback sample.')}</p></div></div>
     <button type="button" className="primary-button profile-advice-generate" onClick={()=>void generate()} disabled={busy}>{busy?<Loader2 size={18} className="spin" aria-hidden="true"/>:<Sparkles size={18} aria-hidden="true"/>}{busy?t('正在生成画像与建议…','Generating your portrait…'):result?t('重新生成画像与建议','Regenerate portrait & advice'):t('AI 生成画像与建议','Generate portrait & advice')}</button>
+    <p className="profile-advice-note">{freeAiMessages[language].notice}</p>
     <p className="profile-advice-note">{t('使用已保存的 AI 服务商，计入本站每日任务与月预算。生成结果不会自动保存偏好、改变权重或添加来源。','Uses your saved AI provider and counts toward daily tasks and the monthly budget. It will not save preferences, change weights, or add sources.')}</p>
     {(needsConfiguration||aiConfigured===false)&&<div className="profile-advice-setup"><p>{t('先保存所选 AI 服务商的 API Key，再生成画像；无需开启自动 AI 阅读。','Save an API key for the selected provider first. Automatic AI reading can stay off.')}</p>{onOpenAiSettings&&<button type="button" className="small-button" onClick={onOpenAiSettings}>{t('前往 AI 设置','Open AI settings')}<ArrowRight size={15} aria-hidden="true"/></button>}</div>}
     {busy&&<p className="profile-advice-status" role="status">{t('正在整理你的偏好，原有设置保持不变。','Reflecting on your preferences. Your settings remain as they are.')}</p>}

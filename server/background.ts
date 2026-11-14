@@ -32,7 +32,7 @@ export async function runBackground(env:Env,now=Date.now()){
   // Independently opt-in, personal credential policy and existing atomic budget
   // reservations still apply. Missing keys never fall through to owner keys.
   const ownerId=await getState(env,'background:owner');
-  if(policy.aiEnabled&&ownerId){const {getConfig,getProviderKey}=await import('./db');const config=await getConfig(env);if(config.enabled&&await getProviderKey(env,config.provider)){const usage=await getUsage(env);if(usage.analyzedToday<config.dailyLimit&&usage.cost+(usage.reserved||0)<config.monthlyBudget){const {analyzePending}=await import('./ai');analyzed=(await analyzePending(env,1,ownerId)).analyzed;}}}
+  if(policy.aiEnabled&&ownerId){const {getConfig,getProviderKey}=await import('./db');const config=await getConfig(env);if(config.aiChannel!=='free'&&config.enabled&&await getProviderKey(env,config.provider)){const usage=await getUsage(env);if(usage.analyzedToday<config.dailyLimit&&usage.cost+(usage.reserved||0)<config.monthlyBudget){const {analyzePending}=await import('./ai');analyzed=(await analyzePending(env,1,ownerId)).analyzed;}}}
   // A round with pending work is resumed on the next platform tick.
   if(!sync.pending)await setState(env,'background:last-run',new Date(now).toISOString());
   await setState(env,'background:last-result',JSON.stringify({processed:sync.processed,pending:sync.pending,analyzed,at:new Date(now).toISOString()}));return {ran:true,pending:sync.pending,analyzed};
