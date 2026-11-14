@@ -3,6 +3,13 @@
 更新时间：2026-11-14T20:40:00+08:00
 
 
+
+## 运维检查点：关闭成员 workers.dev 地址（2026-11-15 00:15 +08:00，分支 `ops/member-disable-workers-dev`）
+- 授权：Alan 2026-11-15 同意关闭备用访问地址。`yourfeed-member-001` 部署版本 `5bcde704-b5bd-4396-9d9f-d44a0c61ea87`，`workers_dev=false`、`preview_urls=false`；运行代码、cron、变量、D1 均不变，无迁移。模板 `prepare-instance.mjs` 同步生成这两项。
+- 验证：`yourfeed-member-001.alan-xiaofei224.workers.dev/login` → 404（error 1042）；subdomain API `enabled:false, previews_enabled:false`；`yourfeed-m1.alanzhu.dev/login` 200，`/` 302 → `/login`。
+- 回滚：`wrangler rollback 2edcc040-d5ad-4ba7-ae8c-64a69eb2b1d4 --name yourfeed-member-001` 后，用 API `POST .../workers/scripts/yourfeed-member-001/subdomain {"enabled":true}` 重新打开 workers.dev（版本回滚不会自动恢复该开关）。部署前 D1 书签 `00000016-00000000-00005123-07494456451935448865f1a2535e70f7`（未使用）。
+- 待办：Alan 给 API token 加上 Access 权限后，再创建 `/operator` 的 Access 应用（见上一检查点）。
+
 ## 运维检查点：托管安全与成员定时更新（2026-11-14 23:05 +08:00，分支 `ops/member-scheduled-refresh`）
 - 授权：Alan 2026-11-14 同意执行 /operator 的 Cloudflare Access 保护和成员实例定时更新；不改变数据隔离与访问权限。
 - 成员定时更新：`yourfeed-member-001` 已部署版本 `2edcc040-d5ad-4ba7-ae8c-64a69eb2b1d4`（2026-11-14 22:36 +08:00），新增 cron `*/15 * * * *` 与 `BACKGROUND_SCHEDULE_CONFIGURED=true`；运行代码与 `e2e92e3` 相同（其后只有文档提交），无迁移、无数据改动。回滚：`wrangler rollback 16a2d9db-5cae-4bc5-b1c8-6691623edc86 --name yourfeed-member-001`，并删除 cron（`wrangler triggers deploy` 空 crons 或 API `PUT .../schedules []`）。部署前 D1 time-travel 书签 `00000010-00000000-00005123-df8bf64a953e8e249d489fc39dc7f3a8`（未用于恢复）。
