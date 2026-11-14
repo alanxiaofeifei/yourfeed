@@ -2,6 +2,10 @@
 
 The tour is optional. RSS reading requires no API key. The home page always offers **Getting started**; resuming or reviewing changes tour position only, never profile, sources or provider configuration. The existing single-source entry remains separate from **Discover & import → Curated**.
 
+## Preview
+
+The non-production preview and its current validation status are recorded in [the project checkpoint](STATUS.md).
+
 ## Release configuration
 
 Set `ONBOARDING_AUTO_OFFER_CUTOFF` to the **production launch day**, using the actual approved launch timestamp (ISO 8601 UTC, e.g. `YYYY-MM-DDTHH:mm:ss.sssZ`) **at deploy time**, not a hardcoded or historical date. A disposable non-production preview may deliberately use a past cutoff to exercise new-account invitations; never copy that value into production. Only a trusted local `auth_user.created_at` at or after this cutoff is eligible for an automatic invitation. Existing accounts, identity sources without a trusted creation time, invalid/missing cutoff, corrupt/unknown tour state and read failures fall back to the manual launcher. No member data should be inspected to make this decision. Deploying this PR or enabling the cutoff in production requires separate approval.
