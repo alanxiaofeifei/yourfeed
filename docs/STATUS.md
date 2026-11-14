@@ -1,5 +1,9 @@
 # 当前项目状态
 
+
+## Issue C / #13 检查点（2026-11-15 04:31 UTC+8，已推送并部署 preview）
+- 提交 `3f7ea4e` 已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `3d75e4de`（上一版 `aa2786a0`）。无迁移（复用 `feedback` JSON），仅代码部署：未重传 secret、未重置 preview D1；生产 `yourfeed` 与 `yourfeed-member-001` 未动。
+- 门禁：unit 806/806、typecheck、Cloudflare build、生产 e2e 72 passed / 15 skipped、性能 1/1（桌面 p95 ≤31.3ms，手机 ≤47.1ms）、截图 4/4。工具：Codex CLI exec，gpt-6.1-sol，reasoning high（中途环境重启一次，已续跑）。
 ## Issue C / #13（2026-11-15，本地验收完成）
 - [Issue #13](https://github.com/alanxiaofeifei/yourfeed/issues/13) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`、基线 `4bbb012`；执行仓库外 `TASK_C.md`，全部改动未提交、未推送、未合并、未部署，未写 GitHub、未运行远程 Wrangler、未读取私密目录或密钥。
 - 四语卡片/阅读器「不喜欢」立即隐藏，6 秒无障碍 Undo（悬停/聚焦暂停）；侧栏历史可分页搜索并撤销旧 dismissed，跨刷新可恢复。逐条串行写入、失败回滚、Undo 原位恢复并保留已加载页面；手机使用有完整无障碍名称的图标按钮。四语理由与本地免费排序、自带 Key/有限免费通道费用说明已补齐。
