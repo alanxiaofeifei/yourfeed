@@ -41,9 +41,12 @@ test('preference cards: failed progress retains choices, retry persists, stale t
  f.state.revision++;await answer(page);await expect(page.locator('.preference-dialog [role=alert]')).toBeVisible();await page.getByRole('button',{name:'Reload saved progress',exact:true}).click();await expect(page.locator('.preference-dialog [role=alert]')).toHaveCount(0);await expect(page.locator('progress')).toHaveAttribute('value','1');
 });
 
-for(const generation of ['valid','invalid','429','timeout'])test(`preference cards: AI ${generation} path stays usable`,async({page})=>{
- const f=await preferenceFixture(page,{ai:true,generation});await openPreferences(page);const started=Date.now();await page.locator('[data-pref=generate]').click();await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','false',{timeout:8000});expect(Date.now()-started).toBeLessThan(7500);
- await expect(page.locator('.preference-dialog h3')).toHaveText(generation==='valid'?'Synthetic AI question for your interests?':'What do you want most when opening YourFeed?');expect(f.generations).toHaveLength(1);expect(f.state.source).toBe(generation==='valid'?'ai':'curated');expect(f.commits).toHaveLength(0);await answer(page);await expect(page.locator('progress')).toHaveAttribute('value','1');expect(f.errors).toEqual([]);
+for(const generation of ['valid','slow-valid','invalid','429','timeout'])test(`preference cards: AI ${generation} path stays usable`,async({page})=>{
+ const f=await preferenceFixture(page,{ai:true,generation});await openPreferences(page);const started=Date.now();const aborted=generation==='timeout'?page.waitForEvent('requestfailed',{predicate:req=>req.url().endsWith('/api/preference-cards/generate')}):null;await page.locator('[data-pref=generate]').click();
+ if(generation==='slow-valid'){await page.waitForTimeout(6100);await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','true');}
+ await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','false',{timeout:10000});expect(Date.now()-started).toBeLessThan(10000);
+ if(aborted){expect(Date.now()-started).toBeGreaterThanOrEqual(9000);expect((await aborted).failure().errorText).toContain('ERR_ABORTED');}
+ const ai=generation==='valid'||generation==='slow-valid';await expect(page.locator('.preference-dialog h3')).toHaveText(ai?'Synthetic AI question for your interests?':'What do you want most when opening YourFeed?');expect(f.generations).toHaveLength(1);expect(f.state.source).toBe(ai?'ai':'curated');expect(f.commits).toHaveLength(0);await answer(page);await expect(page.locator('progress')).toHaveAttribute('value','1');expect(f.errors).toEqual([]);
 });
 
 for(const shot of [{file:'desktop-cards-zh-CN.png',width:1280,height:800,language:'zh'},{file:'mobile-cards-zh-CN.png',width:390,height:844,language:'zh'},{file:'desktop-cards-en.png',width:1280,height:800,language:'en'}])test(`phase B screenshot ${shot.file}`,async({page})=>{

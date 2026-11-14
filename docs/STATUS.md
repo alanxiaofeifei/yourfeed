@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## D3 / Issue #14（2026-11-15，仅本地）
+- 分支 `feat/first-use-onboarding`，基线 `8df845e`；按仓库外 `TASK_D3.md` 执行，不 commit/push、GitHub 写入或远程 Wrangler，不读取私密目录或密钥，不调用真实服务。
+- OVH 固定请求新增 `reasoning_effort:"low"`，保留 JSON / token 限制；Pollinations 请求不变。偏好出题服务端总计 8 秒，前端 9 秒回退；普通免费任务仍总计 8 秒，OVH 最多 6 秒，备用通道使用剩余预算。
+- 原有 Retry-After 已覆盖秒数 / HTTP 日期；补充 reset 头冷却（最少 30 秒）及边界测试。依据任务提供的 CMH 探测：OVH low 3.3 秒成功、默认 25 秒超时、备用 12.7 秒成功且 OVH 随后限流；非本轮实测或线上验收。
+- 最终门禁（Node 24.22.1 / npm 11.21.1，现有 package-lock）：unit **793/793（65 files）**、typecheck、Cloudflare build、生产模式本地 e2e **63 passed / 11 skipped** 与 `git diff --check` 全通过。网络均 mock；覆盖 6/8 秒边界、3.3 秒 OVH 成功、7.5 秒浏览器成功、9 秒中止回退及 429 冷却边界，保留校验 / 预算断言。日志在仓库外 `unit-D3.log`、`typecheck-D3.log`、`build-D3.log`、`e2e-D3.log`；完成记录 `D3_DONE.md`。本节覆盖下方旧时间预算，D3 已完成；下一步仅审阅本地 diff。未提交、推送、合并、部署或线上验证。
+
 ## Issue D / #14（2026-11-15，仅本地，未提交或部署）
 - 入口：[Issue #14](https://github.com/alanxiaofeifei/yourfeed/issues/14) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`，基线 `bebe8dc`（含 `354b244`）。任务 `TASK_D2.md` 禁止 commit/push、GitHub 写入与远程 Wrangler；本轮无迁移、鉴权、隔离或权限改动，未读取私密目录。
 - 默认免 key 服务端通道 OVHcloud → Pollinations → 精选题库/普通阅读，覆盖显式偏好出题、来源辅助、画像及单篇阅读；不用于自动/后台分析或连接测试。固定请求构造导出在 `server/free-ai.ts`，过滤 reasoning、校验 JSON、限制响应大小；每端点 isolate 冷却 30 秒并尊重 Retry-After，既有 meta 原子限制每独立单所有者实例每天 10 次。偏好出题保持服务端总计 5 秒 / 前端 6 秒回退，其他显式免费请求总计 8 秒。

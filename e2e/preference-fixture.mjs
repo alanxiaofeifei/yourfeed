@@ -20,10 +20,11 @@ export async function preferenceFixture(page,{language='en',ai=false,free=false,
    return route.fulfill({json:state});
   }
   if(p==='/api/preference-cards/generate'){
-   generations.push('generate');if(generation==='timeout'){await new Promise(resolve=>setTimeout(resolve,6500));return route.fulfill({json:{source:'curated',questions:bank[language]}}).catch(()=>{});}
+   generations.push('generate');if(generation==='timeout'||generation==='slow-valid')await new Promise(resolve=>setTimeout(resolve,generation==='timeout'?9500:7500));
    if(generation==='curated')return route.fulfill({json:{source:'curated',questions:bank[language]}});
    if(generation==='429')return route.fulfill({status:429,json:{error:'Synthetic limit'}});
    const questions=structuredClone(bank[language]);if(generation==='invalid')questions[0].optionA.sourceIds=['invented'];else questions[0].prompt='Synthetic AI question for your interests?';
+   if(generation==='timeout')return route.fulfill({json:{source:'ai',questions}}).catch(()=>{});
    return route.fulfill({json:{source:'ai',questions}});
   }
   if(p==='/api/profile'){if(method==='PUT')profile={...req.postDataJSON(),version:profile.version+1};return route.fulfill({json:profile});}

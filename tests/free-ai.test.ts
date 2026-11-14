@@ -16,11 +16,13 @@ function environment():Env{
 const response=(value:unknown={ok:true},extra:Record<string,unknown>={})=>new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(value),reasoning:'private reasoning that must be discarded'},finish_reason:'stop'}],...extra}));
 const task={instructions:'Return JSON',prompt:'Synthetic nonpersonal input',parse:(text:string)=>{const data=JSON.parse(text);if(data.ok!==true)throw Error('invalid');return data as {ok:true};}};
 beforeEach(async()=>{vi.resetModules();env=environment();now=Date.now();vi.spyOn(Date,'now').mockImplementation(()=>now);network=vi.fn(async()=>response());vi.stubGlobal('fetch',network);free=await import('../server/free-ai');});
-afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();db.close();});
+afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();db.close();});
 
 describe('keyless free channel with real SQLite budgets and mocked network',()=>{
  it('constructs only the two fixed official keyless JSON requests and strips reasoning',async()=>{
   for(const endpoint of ['ovh','pollinations'] as const){const request=free.buildFreeAiRequest(endpoint,'system','prompt');const body=JSON.parse(request.init.body);expect(request.init.headers).toEqual({'Content-Type':'application/json'});expect(request.init.redirect).toBe('manual');expect(body).toMatchObject({max_tokens:4096,response_format:{type:'json_object'},stream:false});expect(body.model).toBe(endpoint==='ovh'?'gpt-oss-20b':'openai');expect(request.url).toBe(endpoint==='ovh'?'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions':'https://text.pollinations.ai/v1/chat/completions');}
+  const ovh=JSON.parse(free.buildFreeAiRequest('ovh','system','prompt').init.body),pollinations=JSON.parse(free.buildFreeAiRequest('pollinations','system','prompt').init.body);
+  expect(ovh.reasoning_effort).toBe('low');expect(pollinations).toEqual({model:'openai',stream:false,max_tokens:4096,response_format:{type:'json_object'},messages:[{role:'system',content:'system'},{role:'user',content:'prompt'}]});
   expect(await free.runFreeAi(env,task)).toEqual({ok:true});expect(network).toHaveBeenCalledTimes(1);expect(JSON.stringify(await free.runFreeAi(env,task))).not.toContain('reasoning');
  });
  for(const status of [402,429,500,503])it(`OVH ${status} falls through to Pollinations, honors Retry-After, and never exposes raw errors`,async()=>{
@@ -32,13 +34,46 @@ describe('keyless free channel with real SQLite budgets and mocked network',()=>
  it('honors HTTP-date Retry-After and blocks redirects',async()=>{
   network.mockResolvedValueOnce(new Response('',{status:302,headers:{Location:'https://evil.test','Retry-After':new Date(now+120_000).toUTCString()}}));await free.runFreeAi(env,task);now+=31_000;await free.runFreeAi(env,task);expect(network.mock.calls.map(call=>call[0])).toEqual([expect.stringContaining('ovh'),expect.stringContaining('pollinations'),expect.stringContaining('pollinations')]);
  });
+ for(const kind of ['retry seconds','retry date','reset delay','reset epoch','reset date','x-reset epoch','latest header','minimum','invalid'])it(`OVH 429 cooldown honors ${kind} through the exact retry boundary`,async()=>{
+  now=Math.floor(now/1000)*1000;const start=now;
+  const headers:Record<string,string>=kind==='retry seconds'?{'Retry-After':'120'}:kind==='retry date'?{'Retry-After':new Date(now+120_000).toUTCString()}:kind==='reset delay'?{'ratelimit-reset':'120'}:kind==='reset epoch'?{'ratelimit-reset':String(now/1000+120)}:kind==='reset date'?{'ratelimit-reset':new Date(now+120_000).toUTCString()}:kind==='x-reset epoch'?{'x-ratelimit-reset':String(now/1000+120)}:kind==='latest header'?{'Retry-After':'60','ratelimit-reset':'120'}:kind==='minimum'?{'Retry-After':'1','ratelimit-reset':'0'}:{'Retry-After':'invalid','ratelimit-reset':'invalid'};
+  const cooldown=kind==='minimum'?30_000:kind==='invalid'?60_000:120_000;
+  network.mockResolvedValueOnce(new Response('private rate-limit error',{status:429,headers}));expect(await free.runFreeAi(env,task)).toEqual({ok:true});
+  now=start+cooldown-1;await free.runFreeAi(env,task);expect(network.mock.calls.filter(call=>call[0].includes('ovh'))).toHaveLength(1);
+  now=start+cooldown;expect(await free.runFreeAi(env,task)).toEqual({ok:true});expect(network.mock.calls.filter(call=>call[0].includes('ovh'))).toHaveLength(2);
+ });
  for(const bad of ['invalid-json','invalid-shape','empty','truncated','oversized'])it(`validates ${bad} before accepting either provider`,async()=>{
   network.mockImplementationOnce(async()=>bad==='invalid-json'?new Response('not json'):bad==='invalid-shape'?response({ok:false}):bad==='empty'?response({}, {choices:[{message:{content:'',reasoning:'only reasoning'}}]}):bad==='truncated'?response({ok:true},{choices:[{message:{content:'{}'},finish_reason:'length'}]}):new Response('x'.repeat(256001)));
   expect(await free.runFreeAi(env,task)).toEqual({ok:true});expect(network).toHaveBeenCalledTimes(2);
  });
- it('timeouts cover fetch and stalled bodies and still try backup within the overall deadline',async()=>{
-  network.mockImplementationOnce(()=>new Promise(()=>{}));const start=performance.now();expect(await free.runFreeAi(env,{...task,timeoutSeconds:.12})).toEqual({ok:true});expect(performance.now()-start).toBeLessThan(250);expect(network.mock.calls[0][1].signal.aborted).toBe(true);
-  now+=31_000;network.mockImplementationOnce(async()=>new Response(new ReadableStream({start(){}})));expect(await free.runFreeAi(env,{...task,timeoutSeconds:.12})).toEqual({ok:true});
+ for(const stalled of ['fetch','body'])for(const timeoutSeconds of [undefined,8])it(`${stalled}: OVH gets six seconds, backup the remaining two, within eight total (${timeoutSeconds??'default'})`,async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);network.mockImplementation(async()=>stalled==='fetch'?new Promise(()=>{}):new Response(new ReadableStream({start(){}})));
+  let settled=false;const result=free.runFreeAi(env,{...task,timeoutSeconds}).then(value=>{settled=true;return value;});
+  await vi.advanceTimersByTimeAsync(5999);expect(network).toHaveBeenCalledTimes(1);expect(settled).toBe(false);expect(network.mock.calls[0][1].signal.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(network).toHaveBeenCalledTimes(2);expect(network.mock.calls[0][1].signal.aborted).toBe(true);expect(network.mock.calls[1][0]).toContain('pollinations');
+  await vi.advanceTimersByTimeAsync(1999);expect(settled).toBe(false);expect(network.mock.calls[1][1].signal.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(await result).toBeUndefined();expect(network.mock.calls[1][1].signal.aborted).toBe(true);expect(network).toHaveBeenCalledTimes(2);
+ });
+ it('never exceeds a shorter caller deadline or starts a backup after it',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);network.mockImplementation(()=>new Promise(()=>{}));const result=free.runFreeAi(env,{...task,timeoutSeconds:.12});
+  await vi.advanceTimersByTimeAsync(120);expect(await result).toBeUndefined();expect(network).toHaveBeenCalledTimes(1);expect(network.mock.calls[0][1].signal.aborted).toBe(true);
+ });
+ it('accepts the observed 3.3-second OVH preference reply without switching providers',async()=>{
+  const {generatePreferenceCards}=await import('../server/preference-cards');const questions=curatedQuestions('en');vi.useFakeTimers();vi.setSystemTime(now);
+  let release!:()=>void;const started=new Promise<void>(resolve=>release=resolve);
+  network.mockImplementation(async()=>{release();await new Promise(resolve=>setTimeout(resolve,3300));return response({questions});});const result=generatePreferenceCards(env,'en');await started;
+  await vi.advanceTimersByTimeAsync(3299);expect(network).toHaveBeenCalledTimes(1);expect(network.mock.calls[0][1].signal.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(await result).toEqual({source:'ai',questions});expect(network).toHaveBeenCalledTimes(1);
+ });
+ it('preference generation waits six seconds for OVH and accepts backup within the eight-second budget',async()=>{
+  const {generatePreferenceCards}=await import('../server/preference-cards');const questions=curatedQuestions('en');vi.useFakeTimers();vi.setSystemTime(now);
+  let release!:()=>void;const started=new Promise<void>(resolve=>release=resolve);
+  network.mockImplementationOnce(()=>{release();return new Promise(()=>{});}).mockImplementationOnce(async()=>{await new Promise(resolve=>setTimeout(resolve,1500));return response({questions});});
+  let settled=false;const result=generatePreferenceCards(env,'en').then(value=>{settled=true;return value;});await started;
+  await vi.advanceTimersByTimeAsync(5999);expect(network).toHaveBeenCalledTimes(1);expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(network).toHaveBeenCalledTimes(2);expect(network.mock.calls[0][1].signal.aborted).toBe(true);
+  await vi.advanceTimersByTimeAsync(1499);expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);expect(await result).toEqual({source:'ai',questions});expect(network.mock.calls[1][0]).toContain('pollinations');
  });
  it('both endpoints failing returns no AI and opens a circuit without more network or budget writes',async()=>{
   network.mockImplementation(async()=>new Response('',{status:429}));expect(await free.runFreeAi(env,task)).toBeUndefined();expect(await free.runFreeAi(env,task)).toBeUndefined();expect(network).toHaveBeenCalledTimes(2);expect(db.prepare("SELECT value FROM meta WHERE key LIKE 'free-ai:day:%'").get()).toEqual({value:'1'});

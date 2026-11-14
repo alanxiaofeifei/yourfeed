@@ -9,17 +9,22 @@ const endpoints = {
 /** The only outbound construction seam, also reusable by an operator's egress probe.
  * No credentials, configurable URL, redirects, tools or strict-schema mode. */
 export function buildFreeAiRequest(endpoint:FreeEndpoint,instructions:string,prompt:string,signal?:AbortSignal) {
-  return {url:endpoints[endpoint].url,init:{method:'POST',headers:{'Content-Type':'application/json'},redirect:'manual' as const,signal,body:JSON.stringify({model:endpoints[endpoint].model,stream:false,max_tokens:4096,response_format:{type:'json_object'},messages:[{role:'system',content:instructions},{role:'user',content:prompt}]})}};
+  return {url:endpoints[endpoint].url,init:{method:'POST',headers:{'Content-Type':'application/json'},redirect:'manual' as const,signal,body:JSON.stringify({model:endpoints[endpoint].model,...(endpoint==='ovh'?{reasoning_effort:'low'}:{}),stream:false,max_tokens:4096,response_format:{type:'json_object'},messages:[{role:'system',content:instructions},{role:'user',content:prompt}]})}};
 }
 
 // Shared egress is scarce: reserve synchronously before fetch, including in-flight
 // requests. This is deliberately best effort per isolate, never an IP guarantee.
 const nextAttempt:Record<FreeEndpoint,number>={ovh:0,pollinations:0};
 function retryAt(response:Response,now:number):number {
-  const raw=response.headers.get('Retry-After');
-  if(!raw)return now+60_000;
-  const seconds=Number(raw),date=Date.parse(raw);
-  return Math.max(now+30_000,Number.isFinite(seconds)?now+Math.max(0,seconds)*1000:Number.isFinite(date)?date:now+60_000);
+  const deadlines:number[]=[];
+  for(const header of ['Retry-After','ratelimit-reset','x-ratelimit-reset']){
+    const raw=response.headers.get(header)?.trim();if(!raw)continue;
+    const seconds=Number(raw),date=Date.parse(raw);
+    // Retry-After uses delay seconds; reset headers may use delay seconds or Unix seconds.
+    if(Number.isFinite(seconds))deadlines.push(header!=='Retry-After'&&seconds>=1_000_000_000?seconds*1000:now+Math.max(0,seconds)*1000);
+    else if(Number.isFinite(date))deadlines.push(date);
+  }
+  return Math.max(now+30_000,...(deadlines.length?deadlines:[now+60_000]));
 }
 async function visibleContent(response:Response):Promise<string> {
   if(!response.body)throw Error('empty');
@@ -48,7 +53,7 @@ export async function runFreeAi<T>(env:Env,task:{instructions:string;prompt:stri
   for(const endpoint of ['ovh','pollinations'] as const){
     if(nextAttempt[endpoint]>Date.now())continue;
     const remaining=deadline-Date.now();if(remaining<=0)return;
-    const timeout=endpoint==='ovh'?Math.min(remaining,Math.floor((task.timeoutSeconds??8)*500)):remaining;
+    const timeout=endpoint==='ovh'?Math.min(remaining,6000):remaining;
     nextAttempt[endpoint]=Date.now()+30_000;
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
     try{

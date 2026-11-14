@@ -107,8 +107,8 @@ describe('AI preference-card generation with deterministic curated fallback',()=
   network.mockResolvedValue(kind==='invalid JSON'?new Response(JSON.stringify({output_text:'invalid JSON',usage:{input_tokens:1200,output_tokens:200}})):modelResponse(value));
   expect(await generatePreferenceCards(env,'en')).toEqual({source:'curated',questions:curatedQuestions('en')});expect(db.settleUsage).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false}));
  });
- it('aborts a stalled provider after five seconds, with no provider switch or retry',async()=>{
+ it('aborts a stalled provider after eight seconds, with no provider switch or retry',async()=>{
   network.mockImplementation(async(_url:unknown,options:RequestInit)=>new Promise((_resolve,reject)=>options.signal?.addEventListener('abort',()=>reject(new DOMException('Timed out','TimeoutError')))));
-  const started=Date.now();expect((await generatePreferenceCards(env,'en')).source).toBe('curated');expect(Date.now()-started).toBeLessThan(6000);expect(network).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false}));
- },7000);
+  const started=Date.now();expect((await generatePreferenceCards(env,'en')).source).toBe('curated');expect(Date.now()-started).toBeGreaterThanOrEqual(8000);expect(Date.now()-started).toBeLessThan(9000);expect((network.mock.calls[0] as any)[1].signal.aborted).toBe(true);expect(network).toHaveBeenCalledTimes(1);expect(db.settleUsage).toHaveBeenCalledWith(env,expect.objectContaining({success:false}));
+ },10000);
 });

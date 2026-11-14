@@ -51,7 +51,7 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
   if(['1','2','ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();choose(event.key==='1'||event.key==='ArrowLeft'?'A':'B');}
  };document.addEventListener('keydown',keyboard,true);return()=>document.removeEventListener('keydown',keyboard,true);});
  const generate=()=>void run(async()=>{
-  setGenerating(true);setNotice('');const abort=new AbortController();generation.current=abort;const timer=setTimeout(()=>abort.abort(),6000);
+  setGenerating(true);setNotice('');const abort=new AbortController();generation.current=abort;const timer=setTimeout(()=>abort.abort(),9000);
   try{const response=await request<{questions:unknown;source:'ai'|'curated'}>('/api/preference-cards/generate',language,'POST',{},abort.signal);const questions=questionsSchema.parse({questions:response.questions}).questions;await persist({...newPreferenceState(language),revision:revision.current,questions,source:response.source==='ai'?'ai':'curated'});if(response.source!=='ai')setNotice(m.fallback);}
   catch{if(mounted.current){await persist({...newPreferenceState(language),revision:revision.current,questions:curatedQuestions(language)});setNotice(m.fallback);}}
   finally{clearTimeout(timer);generation.current=null;if(mounted.current)setGenerating(false);}

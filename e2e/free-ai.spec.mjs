@@ -16,9 +16,13 @@ for(const language of ['zh','en','zh-TW','vi'])test(`free AI settings ${language
  const contents=await page.content();expect(contents).not.toMatch(/kepler\.ai|text\.pollinations\.ai/);
  await page.locator('#ai-model').fill('gpt-6-luna');await page.locator('.ai-save-button').click();await expect(page.locator('.free-ai-channel input')).toHaveCount(0);expect(f.writes[1]).toMatchObject({aiChannel:'own',model:'gpt-6-luna'});expect(f.writes[1].clearKey).toBeUndefined();expect(f.errors).toEqual([]);
 });
-for(const generation of ['valid','curated','invalid','429','timeout'])test(`free AI preferences ${generation}: no own key is required and fallback is visible`,async({page})=>{
- const f=await preferenceFixture(page,{free:true,generation});await openPreferences(page);await expect(page.locator('[data-pref=generate]')).toBeVisible();await page.locator('[data-pref=generate]').click();await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','false',{timeout:8000});expect(f.generations).toHaveLength(1);expect(f.state.source).toBe(generation==='valid'?'ai':'curated');
- if(generation!=='valid')await expect(page.locator('.preference-dialog p[role=status]')).toHaveText('Using the curated question bank.');expect(f.commits).toHaveLength(0);expect(f.errors).toEqual([]);
+for(const generation of ['valid','slow-valid','curated','invalid','429','timeout'])test(`free AI preferences ${generation}: no own key is required and fallback is visible`,async({page})=>{
+ const f=await preferenceFixture(page,{free:true,generation});await openPreferences(page);await expect(page.locator('[data-pref=generate]')).toBeVisible();const started=Date.now();const aborted=generation==='timeout'?page.waitForEvent('requestfailed',{predicate:req=>req.url().endsWith('/api/preference-cards/generate')}):null;await page.locator('[data-pref=generate]').click();
+ if(generation==='slow-valid'){await page.waitForTimeout(6100);await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','true');}
+ await expect(page.locator('.preference-dialog')).toHaveAttribute('aria-busy','false',{timeout:10000});expect(Date.now()-started).toBeLessThan(10000);
+ if(aborted){expect(Date.now()-started).toBeGreaterThanOrEqual(9000);expect((await aborted).failure().errorText).toContain('ERR_ABORTED');}
+ const ai=generation==='valid'||generation==='slow-valid';expect(f.generations).toHaveLength(1);expect(f.state.source).toBe(ai?'ai':'curated');
+ if(!ai)await expect(page.locator('.preference-dialog p[role=status]')).toHaveText('Using the curated question bank.');expect(f.commits).toHaveLength(0);expect(f.errors).toEqual([]);
 });
 for(const shot of [{file:'desktop-ai-settings-zh-CN.png',width:1280,height:900},{file:'mobile-ai-settings-zh-CN.png',width:390,height:844}])test(`phase D screenshot ${shot.file}`,async({page})=>{
  test.skip(process.env.TOUR_SCREENSHOTS!=='1','Opt-in synthetic screenshot evidence');await page.setViewportSize({width:shot.width,height:shot.height});const f=await settingsFixture(page);await page.evaluate(()=>document.fonts.ready);await page.locator('.ai-settings-page').scrollIntoViewIfNeeded();const directory='/workspace/yourfeed-onboarding-20261112/phaseD-shots';await mkdir(directory,{recursive:true});await page.screenshot({path:`${directory}/${shot.file}`,animations:'disabled'});expect(f.errors).toEqual([]);
