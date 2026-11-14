@@ -1,5 +1,10 @@
 # 当前项目状态
 
+
+## Issue E / #15 检查点（2026-11-15 05:05 UTC+8，已推送并部署 preview）
+- 提交 `88a2245` 已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `63b98714`（上一版 `3d75e4de`）。无迁移，仅代码部署：未重传 secret、未重置 preview D1；生产 `yourfeed` 与 `yourfeed-member-001` 未动。
+- 7 项全部实现（分类状态徽章、统一保存与离页提示、AI 基本/高级分层、费用与测试说明卡、来源⇄Key 互相引路、存储归档摘要、设置内查找），四语；侧栏只保留一句非交互隐私说明，账户身份/退出只在右上角「我的账户」。
+- 门禁：unit 831/831、typecheck、Cloudflare build、生产 e2e 80 passed / 21 skipped、性能 1/1（桌面 p95 ≤31.0ms，手机 ≤51.9ms）、截图 6/6。工具：Codex CLI exec，gpt-6.1-sol，reasoning high。下一步：F（#16 刷新方式）。
 ## Issue E / #15（2026-11-15，本地验收完成）
 - [Issue #15](https://github.com/alanxiaofeifei/yourfeed/issues/15) / [PR #8](https://github.com/alanxiaofeifei/yourfeed/pull/8)，分支 `feat/first-use-onboarding`、基线 `85d3a82`；执行仓库外 `TASK_E.md`，本轮全部改动未提交、未暂存、未推送、未合并、未部署；无 GitHub 写入或远程 Wrangler，未读取私密目录或真实密钥。
 - 七项及[四语通俗说明](settings-proposals.md)完成：分类证据徽章；偏好/AI 共用保存状态、提交锁、离页与 beforeunload 守卫，草稿仅在本次页面内存保留；AI 基本/高级分层与错误展开聚焦；免费默认/自带 Key 费用和草稿测试说明；YouTube 编辑/精选与接口双向返回；设备/正文/归档安全摘要和下载重试；静态四语设置查找、展开与聚焦。侧栏改为一行非交互阅读隐私说明，身份/退出仅在账户菜单。
