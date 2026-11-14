@@ -1,5 +1,11 @@
 # 当前项目状态
 
+
+## Issue D / #14 检查点（2026-11-15 03:44 UTC+8，已推送并部署 preview）
+- 提交 `8df845e`（免 Key 免费公共通道）+ `0a5b9bc`（Cloudflare 出口实测后调参）已推送 PR #8；preview `yourfeed-onboarding-preview` 版本 `aa2786a0`（上一版 `26c055d7`）。仅代码部署：未重传 secret、未迁移、未重置 preview D1。生产 `yourfeed` 与 `yourfeed-member-001` 未动。
+- Cloudflare 出口实测（临时探针 Worker，复用 `buildFreeAiRequest`，colo CMH，用后已删除）：OVH 默认请求 25s 超时；加 `reasoning_effort:"low"` 后 200/3.3s、合法 JSON（复测 200/3.26s）；Pollinations 200/12.7s（复测 0.33s，疑为缓存命中）；约 2 分钟内第 4–5 次 OVH 请求返回 429（匿名额度 2 次/分钟/IP/模型）。结论：可用但会限流，降级到精选题库是常态之一。
+- 门禁（D3）：unit 793/793、typecheck、Cloudflare build、生产 e2e 63 passed / 11 skipped；性能门禁在 D2 通过（tour 未改）。
+- 未验证：通过 preview 应用本身（需 Alan 登录）走一遍真实出题。工具：Codex CLI exec，gpt-6.1-sol，reasoning high。
 ## D3 / Issue #14（2026-11-15，仅本地）
 - 分支 `feat/first-use-onboarding`，基线 `8df845e`；按仓库外 `TASK_D3.md` 执行，不 commit/push、GitHub 写入或远程 Wrangler，不读取私密目录或密钥，不调用真实服务。
 - OVH 固定请求新增 `reasoning_effort:"low"`，保留 JSON / token 限制；Pollinations 请求不变。偏好出题服务端总计 8 秒，前端 9 秒回退；普通免费任务仍总计 8 秒，OVH 最多 6 秒，备用通道使用剩余预算。
