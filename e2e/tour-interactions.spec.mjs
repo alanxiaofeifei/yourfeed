@@ -8,7 +8,7 @@ test('mobile modal user scroll and viewport resize preserve control access',asyn
   await page.locator('.tour-chapters select').selectOption('sources');
   const tour=page.locator('.tour-region');
   await tour.getByRole('button',{name:'Next',exact:true}).click();
-  await tour.getByRole('button',{name:'Go to this control',exact:true}).click();
+  await tour.getByRole('button',{name:'Go here',exact:true}).click();
   const dialog=page.locator('[role="dialog"]');
   await expect(dialog.locator('.tour-region')).toBeVisible();
   const scroll=await dialog.evaluate(async el=>{

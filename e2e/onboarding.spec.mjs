@@ -25,7 +25,7 @@ for (const width of [320, 360, 390, 430, 1440]) {
     }
     await chooseChapter(page, 'sources');
     await page.locator('.tour-region').getByRole('button', { name: 'Next', exact: true }).click();
-    await page.locator('.tour-region').getByRole('button', { name: 'Go to this control', exact: true }).click();
+    await page.locator('.tour-region').getByRole('button', { name: 'Go here', exact: true }).click();
     await expect(page.locator('[data-tour="curated-list"]')).toBeVisible();
     await expect(page.locator('[role="dialog"] .tour-region')).toHaveCount(1);
     for(let tab=0;tab<4;tab++) {
@@ -110,7 +110,7 @@ test('AI draft survives tour navigation cancellation and failed save; test inval
   await page.locator('[data-tour="tour-launcher"]').click();
   await page.locator('.tour-region').getByRole('button', { name: 'Resume', exact: true }).click();
   await chooseChapter(page, 'ai');
-  await page.locator('.tour-region').getByRole('button', { name: 'Go to this control', exact: true }).click();
+  await page.locator('.tour-region').getByRole('button', { name: 'Go here', exact: true }).click();
   const key = page.locator('#ai-key');
   await key.fill('SYNTHETIC_SENTINEL_NOT_A_KEY');
   await page.locator('[data-tour="ai-test"] button').click();
@@ -127,7 +127,7 @@ test('AI draft survives tour navigation cancellation and failed save; test inval
   await expect(key).toHaveValue('SYNTHETIC_SENTINEL_NOT_A_KEY');
   await chooseChapter(page, 'profile');
   page.once('dialog', dialog => dialog.dismiss());
-  await page.locator('.tour-region').getByRole('button', { name: 'Go to this control', exact: true }).click();
+  await page.locator('.tour-region').getByRole('button', { name: 'Go here', exact: true }).click();
   await expect(key).toHaveValue('SYNTHETIC_SENTINEL_NOT_A_KEY');
   expect(JSON.stringify(f.requests)).not.toContain('SYNTHETIC_SENTINEL');
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
@@ -286,7 +286,7 @@ test('manual source spotlight outlines the real form inside its focus scope',asy
  await region.getByRole('button',{name:'Resume',exact:true}).click();
  await chooseChapter(page, 'youtube');
  for(let i=0;i<3;i++)await region.getByRole('button',{name:'Next',exact:true}).click();
- await region.getByRole('button',{name:'Go to this control',exact:true}).click();
+ await region.getByRole('button',{name:'Go here',exact:true}).click();
  await expect(page.locator('[role="dialog"] .tour-region')).toBeVisible();
  await expect(page.locator('.tour-spotlight[data-spotlight="source-add"]')).toBeVisible();
  await expect(page.locator('[role="dialog"] form[data-tour="source-add"]')).toBeVisible();
