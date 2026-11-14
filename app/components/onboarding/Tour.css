@@ -1,0 +1,37 @@
+/* Editorial companion to FeedMotion v2: paper, rules, restrained chapter reveals. */
+.tour-home,.tour-slot{grid-column:1/-1;min-width:0}
+.tour-slot:empty{display:none}
+.tour-launcher{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 20px;border:1px solid var(--amber);border-radius:2px;background:var(--surface);color:var(--amber);font-weight:700;cursor:pointer;margin-bottom:16px}
+.tour-region{position:relative;z-index:51;grid-column:1/-1;min-width:0;border-block:1px solid var(--line);border-top:3px solid var(--amber);padding:20px 0;margin:0 0 24px;background:var(--bg);color:inherit;overflow-wrap:anywhere;animation:tour-open var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
+.tour-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.tour-heading h2{font-family:Georgia,'Noto Serif SC',serif;font-size:24px;line-height:1.4;margin:0;text-wrap:balance}
+.tour-heading h2:focus{outline:none}
+.tour-region p{line-height:1.65;margin-top:12px}
+.tour-step-body{animation:tour-step var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
+.tour-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.tour-actions button,.tour-chapters select{min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:2px;background:var(--surface);color:inherit;cursor:pointer}
+.tour-actions button:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}
+.tour-actions button:disabled{opacity:.5;cursor:default}
+.tour-actions button:first-child{border-color:var(--amber);color:var(--amber)}
+.tour-chapters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;font-size:13px}
+.tour-chapters select{max-width:100%}
+.tour-evidence{display:flex;gap:8px;flex-wrap:wrap}
+.tour-evidence span{border-bottom:1px solid var(--line);padding:4px 0;margin-right:8px;font-size:12px}
+.tour-progress{font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.tour-help{margin-top:16px}.tour-help summary{min-height:44px;cursor:pointer;padding:10px 0}.tour-help a{color:inherit;text-decoration:underline}.tour-help li{margin-bottom:10px;line-height:1.6}
+[data-tour-highlight=true]{scroll-margin-block:110px}
+.tour-spotlight{position:fixed;z-index:69;pointer-events:none;border:2px solid var(--amber);border-radius:3px;box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--amber),0 0 0 100vmax #0003;animation:tour-spotlight var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
+.tour-spotlight[hidden]{display:none}
+.tour-region :focus-visible,.tour-launcher:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
+.source-import-modal .tour-region,.source-editor-modal .tour-region{margin-top:28px}
+.tour-cost-warning{padding:14px;border:1px solid var(--amber);line-height:1.6}
+.tour-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+@keyframes tour-open{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes tour-step{from{opacity:.25;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes tour-spotlight{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
+/* The short inert exit retains document flow; no floating panel can cover controls. */
+@media(max-width:600px){.tour-region{padding:14px 0}.tour-heading{gap:8px}.tour-heading h2{font-size:20px}.tour-actions button{flex:1 1 125px}.tour-chapters select{width:100%}}
+@media(prefers-reduced-motion:reduce){.tour-region,.tour-step-body,.tour-spotlight{animation:none!important;transition:none!important;transform:none!important}[data-tour-highlight=true]{scroll-behavior:auto!important}}
+
+.tour-exiting{pointer-events:none}.tour-exiting .tour-region{animation:tour-close var(--motion-fast,180ms) ease-out both}@keyframes tour-close{to{opacity:0;transform:translateY(-4px)}}
+@media(prefers-reduced-motion:reduce){.tour-exiting{display:none}}

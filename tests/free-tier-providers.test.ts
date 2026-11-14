@@ -3,13 +3,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
-import { getConfig, getProviderKey, getSecret, saveConfig, type Env } from '../server/db';
+import { getConfig, getProviderKey, getSecret, saveConfig, reserveUsage, settleUsage, type Env } from '../server/db';
 import { PROVIDERS, PROVIDER_METADATA, type ProviderMeta } from '../shared/providers';
 import type { Provider, ProviderConfig, Usage } from '../shared/types';
 import { I18nContext } from '../app/i18n';
+import { getOnboardingMessages } from '../shared/onboarding-messages';
+import type { Language } from '../shared/language';
 import { translate } from '../shared/locales';
 import AiSettings, { type Settings } from '../app/components/AiSettings';
-import { callModel, probeProviderModels } from '../server/ai';
+import { callModel, probeProviderModels, estimateCost } from '../server/ai';
 
 function environment(): Env {
   const db = new DatabaseSync(':memory:');
@@ -33,7 +35,7 @@ function environment(): Env {
 
 const NEW_PROVIDERS = ['gemini', 'groq', 'nvidia', 'cerebras'] as const;
 
-describe('free-tier AI providers configuration', () => {
+describe('AI provider preset configuration (including non-featured Cerebras compatibility)', () => {
   it.each([
     [
       'gemini',
@@ -92,6 +94,28 @@ describe('free-tier AI providers configuration', () => {
   );
 });
 
+describe('saved Cerebras compatibility', () => {
+  it('retains saved credentials, per-provider settings, cost estimates and usage limits', async () => {
+    const env = environment();
+    await saveConfig(env, { provider: 'cerebras', model: 'qwen-3.8-27b', key: 'synthetic-cerebras-saved-key', enabled: true, monthlyBudget: 7, dailyLimit: 1 });
+    await saveConfig(env, { provider: 'groq' });
+    await saveConfig(env, { provider: 'cerebras' });
+    const config = await getConfig(env);
+    expect(config).toMatchObject({ provider: 'cerebras', model: 'qwen-3.8-27b', baseUrl: 'https://api.cerebras.ai/v1', enabled: true, monthlyBudget: 7, dailyLimit: 1, protocol: 'chat-completions', responseFormat: 'json_object' });
+    expect(await getProviderKey(env, 'cerebras')).toBe('synthetic-cerebras-saved-key');
+    const stored = await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('key:cerebras').first<{ json: string }>();
+    expect(stored?.json).not.toContain('synthetic-cerebras-saved-key');
+    const maxCost = estimateCost('cerebras', config.model, 1000, 1000, config);
+    expect(maxCost).toBe(0); // Preserve existing estimate; this is not upstream budget protection.
+    expect(() => estimateCost('cerebras', 'unknown-model', 1000, 1000)).toThrow('价格');
+    const reservation = { reservationId: 'cerebras-1', day: '2026-11-14', month: '2026-11', maxCost, dailyLimit: config.dailyLimit, monthlyBudget: config.monthlyBudget, contentId: 'synthetic-1' };
+    expect(await reserveUsage(env, reservation)).toBe(true);
+    await settleUsage(env, { reservationId: reservation.reservationId, cost: maxCost, inputTokens: 1000, outputTokens: 1000, success: true });
+    expect(await reserveUsage(env, { ...reservation, reservationId: 'cerebras-2', contentId: 'synthetic-2' })).toBe(false);
+    expect(await reserveUsage(env, { ...reservation, reservationId: 'cerebras-3', day: '2026-11-15', maxCost: 8 })).toBe(false);
+  });
+});
+
 describe('hosted mode and env key fallback', () => {
   it('does NOT fall back to admin/env keys in hosted mode for new and existing providers', async () => {
     const env = {
@@ -127,7 +151,7 @@ describe('hosted mode and env key fallback', () => {
 });
 
 describe('UI component rendering: provider key note and free-tier text', () => {
-  function renderSettings(provider: Provider, language: 'zh' | 'en') {
+  function renderSettings(provider: Provider, language: Language) {
     const meta = PROVIDER_METADATA[provider];
     const settings: Settings = {
       provider,
@@ -199,14 +223,8 @@ describe('UI component rendering: provider key note and free-tier text', () => {
     [
       'nvidia',
       'https://build.nvidia.com',
-      '加入 NVIDIA Developer Program 后可免费用于开发测试，有速率限制。在模型页点「Get API Key」获取。',
-      'Free for development with the NVIDIA Developer Program, rate limited. Use "Get API Key" on a model page.',
-    ],
-    [
-      'cerebras',
-      'https://cloud.cerebras.ai',
-      '免费试用约 5 次/分钟、每天 100 万 tokens（以控制台为准）。',
-      'Free trial is about 5 requests/min and 1M tokens/day (see console).',
+      '加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。',
+      'Free development access with the NVIDIA Developer Program; no payment method required, with quota and rate limits. Use "Get API Key" on a model page.',
     ],
   ] as const)(
     'renders key note for %s with correct link and free-tier text in zh and en',
@@ -229,11 +247,32 @@ describe('UI component rendering: provider key note and free-tier text', () => {
     },
   );
 
+  it.each(['zh', 'zh-TW', 'en', 'vi'] as const)('keeps Cerebras selectable but not featured as free-tier in %s', language => {
+    expect(PROVIDER_METADATA.cerebras.freeTier).toBeUndefined();
+    expect(PROVIDERS).toContain('cerebras');
+    expect(Object.values(PROVIDER_METADATA).filter(meta => meta.freeTier).map(meta => meta.id)).toEqual(['gemini', 'groq', 'nvidia']);
+    const html = renderSettings('cerebras', language);
+    expect(html).toContain('class="selected">Cerebras</button>');
+    expect(html).toContain('https://api.cerebras.ai/v1');
+    expect(html).toContain('https://cloud.cerebras.ai');
+    expect(html).not.toContain('class="provider-free-tier-note"');
+    expect(html).not.toContain('$5');
+    expect(html).not.toContain('2026-11-14');
+  });
+
+  it.each(['zh', 'zh-TW', 'en', 'vi'] as const)('always warns that zero rates are not upstream budget protection in %s', language => {
+    const warning = getOnboardingMessages(language).help.costWarning;
+    for (const provider of ['nvidia', 'cerebras', 'custom'] as const) {
+      expect(renderSettings(provider, language)).toContain(warning.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;'));
+    }
+  });
+
   it('renders key note for existing providers without a free-tier line', () => {
     for (const [provider, keyUrl] of [
       ['openai', 'https://platform.openai.com/api-keys'],
       ['deepseek', 'https://platform.deepseek.com/api_keys'],
       ['glm', 'https://open.bigmodel.cn/usercenter/apikeys'],
+      ['cerebras', 'https://cloud.cerebras.ai'],
     ] as const) {
       const html = renderSettings(provider, 'zh');
       expect(html).toContain('class="provider-key-note"');

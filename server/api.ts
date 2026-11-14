@@ -19,6 +19,7 @@ import {schemaHealth} from './health';
 import {retentionStatus,saveRetentionPolicy,cleanupRetention} from './retention';
 import {readLibraryArchiveBody,restoreLibrary} from './library-restore';
 import {reserveManualImport} from './hosted-limits';
+import {getOnboarding,mutateOnboarding} from './onboarding';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -33,6 +34,8 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
     if(!['GET','HEAD'].includes(request.method))checkWriteRequest(request);
     await initialize(env);
+    if(path==='/api/onboarding'&&request.method==='GET')return response(await getOnboarding(env,userId));
+    if(path==='/api/onboarding'&&request.method==='PATCH')return response(await mutateOnboarding(env,userId,await readJson(request)));
     if(path.startsWith('/api/notebook/')){
       const {handleNotebookApi}=await import('./notebook');
       return await handleNotebookApi(request,env,userId);
@@ -97,7 +100,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/sources'&&request.method==='PATCH')return response({ok:true,source:await updateSourceInput(env,await readJson(request))});
     if(path==='/api/sources'&&request.method==='DELETE'){const body=await readJson(request);if(typeof body.id!=='string')throw new HttpError(400,'Source ID is required.');await deleteSource(env,body.id);return response({ok:true});}
     if(path==='/api/settings'&&request.method==='GET')return response(await publicConfig(env));
-    if(path==='/api/settings'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveConfig(env,await readJson(request)));}
+    if(path==='/api/settings'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveConfig(env,await readJson(request),{userId,origin:new URL(request.url).origin}));}
     if(path==='/api/usage'&&request.method==='GET')return response(await getUsage(env));
     if(path==='/api/sync'&&request.method==='POST'){
       const body=await readJson(request);const {syncSources}=await import('./ingest');
@@ -110,7 +113,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     }
     if(path==='/api/test-provider'&&request.method==='POST'){
       await requireRecentAuth(request,env);
-      const body=await readJson(request);const overrides:Partial<import('../shared/types').ProviderConfig>={};if(body.provider!==undefined)overrides.provider=providerName(body.provider);for(const field of ['model','key','providerName','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion'] as const){if(body[field]!==undefined)(overrides as Record<string,unknown>)[field]=body[field];}const {testProvider}=await import('./ai');return response(await testProvider(env,overrides));
+      const body=await readJson(request);const overrides:Partial<import('../shared/types').ProviderConfig>={};if(body.provider!==undefined)overrides.provider=providerName(body.provider);for(const field of ['model','key','providerName','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion'] as const){if(body[field]!==undefined)(overrides as Record<string,unknown>)[field]=body[field];}const {testProvider}=await import('./ai');return response(await testProvider(env,overrides,{userId,origin:new URL(request.url).origin}));
     }
     if(path==='/api/analyze'&&request.method==='POST'){
       const body=await readJson(request);const {analyzeItem,analyzePending}=await import('./ai');
