@@ -8,7 +8,7 @@
 - 运行边界：仅本地合成 API/数据、真实 dist 资源；本地 Wrangler 使用安装 workerd 支持的 compatibility-date 与仅测试的 AUTH_MODE:sites 页面渲染覆盖，不验证 standalone 登录。未读取私密目录、未 push/deploy/远程 Wrangler。
 - 最终门禁（2026-11-15 02:09 UTC+8）：unit 731/731、typecheck、Cloudflare build、生产模式 e2e 36 passed/6 opt-in skipped、性能 harness `TOUR_PERF_ASSERT=1` 通过、4 张截图（仓库外 `phaseA-shots/`）。
 - 点击→可见反馈 p50/p95（ms，12 次/动作，最终 `perf-A-final.json`）：桌面 Next 30/31、Skip 30/31、Back 30/32、Exit 30/32；模拟 PATCH+250ms 时桌面 Next 30/43、其余 30/31；手机 390×844 CPU4× 全部 27–29/29–31。改前：桌面 Next/Skip/Back 46/47、Exit 213/216；+250ms 时 279–280；手机 +250ms 时 Next 295/444。
-- 检查点（2026-11-15，新执行者）：Phase A 提交并部署到 preview（不动生产/成员实例，不清空 preview D1）。之后按 #12–#16 顺序做 B–F。
+- 检查点（2026-11-15 02:15 UTC+8）：Phase A 提交 9c3a1d6 已推送并部署到 preview `yourfeed-onboarding-preview` 版本 be703246（上一版 de0fff18）；线上已确认新 tour CSS 资源，未重置 preview D1，生产 `yourfeed` 与 `yourfeed-member-001` 未动。之后按 #12–#16 顺序做 B–F。
 
 
 更新时间：2026-11-14（Alan 预览反馈，本地检查点；未发布）
