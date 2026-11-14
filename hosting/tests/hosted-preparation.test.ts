@@ -8,6 +8,8 @@ describe('offline isolated instance preparation',()=>{
   expect(Object.keys(a.secrets).sort()).toEqual(['APP_ENCRYPTION_KEY','AUTH_SECRET','HOSTED_INSTANCE_TOKEN'].sort());
   expect(new Set([...Object.values(a.secrets),...Object.values(b.secrets)]).size).toBe(6);
   expect(a.bindings.vars).toMatchObject({HOSTING_MODE:'hosted',AUTH_MODE:'standalone',INSTANCE_ID:manifest.instanceId});
+  expect(a.bindings.triggers.crons).toEqual(['*/15 * * * *']);
+  expect(a.bindings.vars.BACKGROUND_SCHEDULE_CONFIGURED).toBe('true');
   expect(a.register.instanceToken).toBe(a.secrets.HOSTED_INSTANCE_TOKEN);expect(a.marker).toContain("NOT EXISTS(SELECT 1 FROM auth_user)");expect(a.marker).not.toMatch(/UPDATE|DELETE|REPLACE/);
  });
  it('rejects placeholder databases, non-HTTPS origins and unsafe instance identifiers',()=>{

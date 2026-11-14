@@ -37,6 +37,14 @@ The control `/admin` endpoint accepts operator operations including `register`, 
 
 This workflow is source-level infrastructure, **not evidence that five live instances have been provisioned**, mail delivered, OAuth approved, or free-plan load tests passed. A deployment is not available for invitees until the operator completes those steps and acceptance tests.
 
+## Scheduled background refresh (hosted instances)
+
+The hosted preparation helper configures each member Worker with one cron trigger (`*/15 * * * *`, every 15 minutes) and `BACKGROUND_SCHEDULE_CONFIGURED=true`. The cron only invokes the existing `scheduled` handler (`worker/index.ts` → `server/background.ts` `runBackground`): an admission check against the control service, bounded retention cleanup, and source sync (one source per tick) only if the member enabled background updates in **Settings → Storage** (default off; interval at least 6 hours). AI runs only if the member separately opted in with her own key; the cron does not enable it.
+
+Workers Free allows five cron triggers per account. Production `yourfeed` currently has no cron; five member slots would use all five triggers, and adding a production cron would bring the total to six, exceeding Free. Use one cron per Worker and check the account plan and all account triggers before adding slot 5.
+
+Rollback: remove the trigger (`wrangler triggers deploy` with empty crons or redeploy the previous version). This makes no data change.
+
 ## Full capacity, revocation and reassignment
 
 When all slots are reserved/active, stop new allocations, keep existing members signing in, and show the self-hosting guide. A rejected sixth person must not replace another person's DB binding. Expired reservations must not make a data-bearing instance reusable.
