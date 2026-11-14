@@ -28,7 +28,8 @@ export function useTour({userId,ready,onNavigate}:{userId:string;ready:boolean;o
  const chapters=['welcome','profile','sources','feed','ai','youtube','finish'] as const;
  const evidence=data?.evidence;const configured=step.startsWith('profile.')?evidence?.profileReady:step.startsWith('sources.')||step.startsWith('feed.')?evidence?.hasRssSource:step.startsWith('ai.')?evidence?.aiConfigured:step.startsWith('youtube.')?evidence?.youtubeConfigured:undefined;
  const verified=step.startsWith('sources.')||step.startsWith('feed.')?evidence?.rssReady:step.startsWith('youtube.')?evidence?.youtubeReady:step.startsWith('ai.')?evidence?.aiTested:undefined;
- const launch=<button ref={launcher} type="button" data-tour="tour-launcher" className="tour-launcher" aria-expanded={menu||open||welcome} onClick={()=>{setOpen(false);setWelcome(false);setMenu(value=>!value);if(!data)void refresh();}}>{messages.actions.launch}</button>;
+ // Account initialization resets the menu; do not let an early click open it before then.
+ const launch=<button ref={launcher} type="button" data-tour="tour-launcher" className="tour-launcher" disabled={!userId} aria-expanded={menu||open||welcome} onClick={()=>{setOpen(false);setWelcome(false);setMenu(value=>!value);if(!data)void refresh();}}>{messages.actions.launch}</button>;
  const region=(open||menu||welcome)?<section className="tour-region" role="region" aria-labelledby="tour-title" aria-describedby="tour-body">
  <div className="tour-heading"><h2 id="tour-title">{open?messages.steps[step].title:messages.help.title}</h2><button type="button" className="small-button" onClick={pause} disabled={busy}>{messages.actions.close}</button></div>
  <p id="tour-body">{open?messages.steps[step].body:welcome?messages.help.welcome:messages.help.summary}</p>

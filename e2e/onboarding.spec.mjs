@@ -1,7 +1,7 @@
 import { test, expect } from 'playwright/test';
 
 const steps = ['welcome.language','profile.interests','profile.save','sources.entry','sources.curated','feed.update','feed.read','feed.search','feed.shuffle','ai.purpose','ai.provider','ai.credentials','ai.test','ai.save','youtube.intro','youtube.cloud','youtube.save','youtube.channel','finish'];
-async function fixture(page, { newAccount = false, populated = false, progressFailure = false } = {}) {
+async function fixture(page, { newAccount = false, populated = false, progressFailure = false, sessionDelay = 0 } = {}) {
   const state = { schemaVersion: 1, tourVersion: 1, revision: 0, status: 'not_started', currentStep: steps[0], skippedSteps: [], viewedSteps: [], updatedAt: new Date().toISOString() };
   const source = { id: 'synthetic-rss', name: 'Synthetic RSS', platform: 'rss', locator: 'https://example.com/feed.xml', topics: ['science'], enabled: true, status: 'ok', lastSuccess: new Date().toISOString() };
   const item = { id: 'synthetic-item', kind: 'article', platform: 'rss', sourceId: source.id, sourceName: source.name, title: 'Synthetic first article', url: 'https://example.com/article', summary: 'Synthetic excerpt', body: 'A synthetic reading fixture.', publishedAt: new Date().toISOString(), topics: ['science'] };
@@ -36,7 +36,11 @@ async function fixture(page, { newAccount = false, populated = false, progressFa
       return route.fulfill({ json: { state, evidence, autoOffer: newAccount && !state.firstOfferedAt, storage: state.revision ? 'saved' : 'new' } });
     }
     let data = {};
-    if (p === '/api/session') data = { authenticated: true, user: { id: 'synthetic-reader', name: 'Synthetic reader' }, authMode: 'standalone', recentAuth: true };
+    if (p === '/api/session') {
+      // Model a remote session read finishing after the launcher first renders.
+      if (sessionDelay) await new Promise(resolve => setTimeout(resolve, sessionDelay));
+      data = { authenticated: true, user: { id: 'synthetic-reader', name: 'Synthetic reader' }, authMode: 'standalone', recentAuth: true };
+    }
     else if (p === '/api/profile') {
       if (request.method() === 'PUT') return route.fulfill({ status: 500, json: { error: 'Synthetic save failure' } });
       data = profile;
@@ -106,6 +110,30 @@ test('new-account invitation is dismissible and does not return after reload', a
   await expect(page.locator('.tour-region')).toHaveCount(0);
   expect(f.state.status).toBe('dismissed');
 });
+
+for (const width of [390, 1440]) {
+  test(`dismissed tour resumes at the saved step from home at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const f = await fixture(page, { newAccount: true, sessionDelay: 500 });
+    const tour = page.locator('.tour-region');
+    const action = name => tour.getByRole('button', { name, exact: true });
+    await action('Start setup').click();
+    await action('Next').click();
+    await expect.poll(() => f.state.currentStep).toBe('profile.interests');
+    await action('Exit tour').click();
+    await expect(tour).toHaveCount(0);
+    await expect.poll(() => f.state.status).toBe('dismissed');
+    await page.reload();
+    await expect(page.locator('[data-tour="tour-launcher"]')).toBeVisible();
+    await expect(tour).toHaveCount(0);
+    await page.locator('[data-tour="tour-launcher"]').click();
+    await action('Resume').click();
+    await expect(tour.locator('h2')).toHaveText('Tell YourFeed what you want to read');
+    expect(f.state.currentStep).toBe('profile.interests');
+    expect(f.state.status).toBe('in_progress');
+    expect(f.errors).toEqual([]);
+  });
+}
 
 test('progress API failure leaves ordinary cached reading available', async ({ page }) => {
   await fixture(page, { populated: true, progressFailure: true });
