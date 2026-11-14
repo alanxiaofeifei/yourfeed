@@ -1,4 +1,5 @@
 import type {Env} from './db';
+import type {ProviderConfig} from '../shared/types';
 import {getConfig,getSecret} from './db';
 import {authMode} from './auth';
 import {HttpError} from './security';
@@ -9,6 +10,67 @@ import {ONBOARDING_STEPS,isStepId,type OnboardingMutation,type OnboardingState,t
 /** Physical scope is the existing reader DB; identity never comes from JSON input. */
 export function onboardingKey(env:Env,userId:string):string {
   return 'onboarding:'+JSON.stringify([authMode(env),userId,'first-use',1]);
+}
+export interface TestReceiptIdentity {userId:string;origin:string;}
+export interface TestReceiptMetadata {nonce:string;testedAt:string;expiresAt:string;credentialRevision:string;configRevision:string;}
+const RECEIPT_TTL=10*60_000;
+const receiptFields=['provider','model','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion'] as const;
+const encode=(value:string)=>btoa(value).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const decode=(value:string)=>atob(value.replace(/-/g,'+').replace(/_/g,'/'));
+/** The only credential derivative is an opaque transient MAC, never persisted.
+ * Origin plus per-instance encryption material/namespace bind this capability to
+ * its reader instance; authenticated identity comes only from the API adapter. */
+async function receiptKey(env:Env):Promise<CryptoKey> {
+  const master=env.APP_ENCRYPTION_KEY;if(typeof master!=='string')throw Error('Receipt unavailable');
+  const bytes=/^[a-f0-9]{64}$/i.test(master)?Uint8Array.from(master.match(/../g)!,value=>parseInt(value,16)):Uint8Array.from(atob(master),value=>value.charCodeAt(0));
+  if(bytes.length!==32)throw Error('Receipt unavailable');
+  return crypto.subtle.importKey('raw',bytes,{name:'HMAC',hash:'SHA-256'},false,['sign','verify']);
+}
+async function receiptDomain(env:Env,create=false):Promise<string> {
+  const key='onboarding:receipt-domain:v1';
+  if(create)await env.DB.prepare('INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)').bind(key,crypto.randomUUID()).run();
+  const row=await env.DB.prepare('SELECT value FROM meta WHERE key=?').bind(key).first<{value:string}>();
+  if(!row||!row.value.match(/^[0-9a-f-]{36}$/))throw Error('Receipt domain unavailable');
+  return row.value;
+}
+function receiptMessage(env:Env,domain:string,identity:TestReceiptIdentity,config:ProviderConfig,credential:string,payload:{v:number;nonce:string;issuedAt:number;expiresAt:number}) {
+  return new TextEncoder().encode(JSON.stringify(['yourfeed:connection-test:v1',domain,onboardingKey(env,identity.userId),identity.origin,env.INSTANCE_ID??null,env.SECRET_NAMESPACE??'yourfeed',payload,receiptFields.map(field=>config[field]??null),credential]));
+}
+/** Called only after testProvider confirms a visible successful response. Failure
+ * to create optional proof must never turn an already billed test into failure. */
+export async function issueTestReceipt(env:Env,identity:TestReceiptIdentity,config:ProviderConfig,credential:string,now=Date.now()):Promise<string|undefined> {
+  try {
+    const payload={v:1,nonce:crypto.randomUUID(),issuedAt:now,expiresAt:now+RECEIPT_TTL};
+    const signature=await crypto.subtle.sign('HMAC',await receiptKey(env),receiptMessage(env,await receiptDomain(env,true),identity,config,credential,payload));
+    return encode(JSON.stringify({...payload,tag:encode(String.fromCharCode(...new Uint8Array(signature)))}));
+  }catch{return undefined;}
+}
+/** Invalid proof is ignored, not a failed product save. Expiry is absolute; replay
+ * cannot extend it. A matching receipt can acknowledge only this exact config/key. */
+export async function verifyTestReceipt(env:Env,identity:TestReceiptIdentity,config:ProviderConfig,credential:string,token:unknown,now=Date.now()):Promise<{nonce:string;testedAt:string;expiresAt:string}|undefined> {
+  try {
+    if(typeof token!=='string'||token.length>1024||!token.match(/^[A-Za-z0-9_-]+$/))return;
+    const value=JSON.parse(decode(token));
+    if(!value||value.v!==1||Object.keys(value).sort().join(',')!=='expiresAt,issuedAt,nonce,tag,v'||typeof value.nonce!=='string'||!value.nonce.match(/^[0-9a-f-]{36}$/)||!Number.isSafeInteger(value.issuedAt)||!Number.isSafeInteger(value.expiresAt)||value.issuedAt>now||value.expiresAt<=now||value.expiresAt-value.issuedAt!==RECEIPT_TTL||typeof value.tag!=='string')return;
+    const {v,nonce,issuedAt,expiresAt}=value,signature=Uint8Array.from(decode(value.tag),char=>char.charCodeAt(0));
+    if(signature.length!==32||!await crypto.subtle.verify('HMAC',await receiptKey(env),signature,receiptMessage(env,await receiptDomain(env),identity,config,credential,{v,nonce,issuedAt,expiresAt})))return;
+    return {nonce,testedAt:new Date(issuedAt).toISOString(),expiresAt:new Date(expiresAt).toISOString()};
+  }catch{return undefined;}
+}
+export const testReceiptStorageKey=(env:Env,userId:string)=>onboardingKey(env,userId)+':ai-test';
+async function verifiedConnection(env:Env,userId:string|undefined,provider:string,now:number):Promise<{aiTested:boolean;aiVerification:'not_recorded'|'connection_test';aiTestedAt?:string}> {
+  const unverified={aiTested:false,aiVerification:'not_recorded' as const};if(!userId)return unverified;
+  try {
+    const [proof,key,config]=await Promise.all([
+      env.DB.prepare('SELECT json FROM settings WHERE id=?').bind(testReceiptStorageKey(env,userId)).first<{json:string}>(),
+      env.DB.prepare("SELECT json_extract(json,'$.credentialRevision') revision FROM settings WHERE id=?").bind('key:'+provider).first<{revision:unknown}>(),
+      env.DB.prepare("SELECT json_extract(json,'$.configRevision') revision FROM settings WHERE id=?").bind('config').first<{revision:unknown}>(),
+    ]);
+    if(!proof||typeof key?.revision!=='string'||typeof config?.revision!=='string')return unverified;
+    const value=JSON.parse(proof.json);
+    if(value.credentialRevision!==key.revision||value.configRevision!==config.revision||!timestamp(value.testedAt)||!timestamp(value.expiresAt)||Date.parse(value.testedAt)>now||Date.parse(value.expiresAt)<=now||Date.parse(value.expiresAt)-Date.parse(value.testedAt)!==RECEIPT_TTL)return unverified;
+    return {aiTested:true,aiVerification:'connection_test',aiTestedAt:value.testedAt};
+  }catch{return unverified;}
 }
 const epoch='1970-01-01T00:00:00.000Z';
 const timestamp=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value)&&Number.isFinite(Date.parse(value));
@@ -44,7 +106,7 @@ async function credentialConfigured(env:Env,id:string,baseUrl?:string):Promise<b
   if(row)return id!=='custom'||row.boundBaseUrl===baseUrl;
   return !!(await getSecret(env,id)); // Existing hosted policy forbids environment-key fallback.
 }
-export async function onboardingEvidence(env:Env,now=Date.now()):Promise<OnboardingEvidence> {
+export async function onboardingEvidence(env:Env,now=Date.now(),userId?:string):Promise<OnboardingEvidence> {
   const profile=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('profile:user').first<{json:string}>();
   let hasSavedProfile=false,profileReady=false;
   if(profile)try {
@@ -66,7 +128,8 @@ export async function onboardingEvidence(env:Env,now=Date.now()):Promise<Onboard
   const rss=sources.filter(source=>source.platform==='rss'&&source.enabled),youtube=sources.filter(source=>source.platform==='youtube'&&source.enabled);
   const config=await getConfig(env);
   const [aiConfigured,youtubeConfigured]=await Promise.all([credentialConfigured(env,config.provider,config.baseUrl),credentialConfigured(env,'youtube')]);
-  return {hasSavedProfile,profileReady,hasRssSource:rss.length>0,hasRssContent:rss.some(source=>source.hasContent),rssReady:rss.some(source=>source.health==='ready'),aiConfigured,aiEnabled:config.enabled===true,aiTested:false,aiVerification:'not_recorded',youtubeConfigured,hasYoutubeSource:youtube.length>0,hasYoutubeContent:youtube.some(source=>source.hasContent),youtubeReady:youtubeConfigured&&youtube.some(source=>source.health==='ready'),sources};
+  const verification=aiConfigured?await verifiedConnection(env,userId,config.provider,now):{aiTested:false,aiVerification:'not_recorded' as const};
+  return {hasSavedProfile,profileReady,hasRssSource:rss.length>0,hasRssContent:rss.some(source=>source.hasContent),rssReady:rss.some(source=>source.health==='ready'),aiConfigured,aiEnabled:config.enabled===true,...verification,youtubeConfigured,hasYoutubeSource:youtube.length>0,hasYoutubeContent:youtube.some(source=>source.hasContent),youtubeReady:youtubeConfigured&&youtube.some(source=>source.health==='ready'),sources};
 }
 async function stored(env:Env,userId:string) {
   const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind(onboardingKey(env,userId)).first<{json:string}>();
@@ -75,7 +138,7 @@ async function stored(env:Env,userId:string) {
 }
 export async function getOnboarding(env:Env,userId:string):Promise<OnboardingResponse> {
   const record=await stored(env,userId),now=Date.now();
-  return {state:record.state,storage:record.storage,evidence:await onboardingEvidence(env,now),autoOffer:record.storage==='new'&&await eligible(env,userId,now)};
+  return {state:record.state,storage:record.storage,evidence:await onboardingEvidence(env,now,userId),autoOffer:record.storage==='new'&&await eligible(env,userId,now)};
 }
 /** Strict CAS: stale actions (including repeated next) return 409, never advance twice.
  * GET is read-only, including during backup windows. Product writes are independent

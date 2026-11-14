@@ -27,7 +27,7 @@ export interface OnboardingEvidence {
   hasRssSource:boolean; hasRssContent:boolean; rssReady:boolean;
   aiConfigured:boolean; aiEnabled:boolean;
   /** Persisted credentials never establish that a connection test ran. */
-  aiTested:false; aiVerification:'not_recorded';
+  aiTested:boolean; aiVerification:'not_recorded'|'connection_test'; aiTestedAt?:string;
   youtubeConfigured:boolean; hasYoutubeSource:boolean; hasYoutubeContent:boolean; youtubeReady:boolean;
   sources:OnboardingSourceEvidence[];
 }

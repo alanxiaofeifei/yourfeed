@@ -8,6 +8,7 @@ async function fixture(page, { newAccount = false, populated = false, progressFa
   const profile = { version: 1, preset: 'explorer', language: 'en', summaryLanguage: 'en', timezone: 'UTC', goals: ['Read science'], topicWeights: { science: 1 } };
   const evidence = { hasSavedProfile: false, profileReady: false, hasRssSource: populated, hasRssContent: populated, rssReady: populated, aiConfigured: false, aiEnabled: false, aiTested: false, aiVerification: 'not_recorded', youtubeConfigured: false, hasYoutubeSource: false, hasYoutubeContent: false, youtubeReady: false, sources: [] };
   const requests = [];
+  const settingsReceipts = [];
   const errors = [];
   page.on('pageerror', () => errors.push('pageerror'));
   await page.addInitScript(() => localStorage.setItem('yourfeed-language', 'en'));
@@ -39,8 +40,11 @@ async function fixture(page, { newAccount = false, populated = false, progressFa
     else if (p === '/api/profile') {
       if (request.method() === 'PUT') return route.fulfill({ status: 500, json: { error: 'Synthetic save failure' } });
       data = profile;
-    } else if (p === '/api/test-provider') data = { message: 'Synthetic connection succeeded' };
-    else if (p === '/api/settings' && request.method() === 'PUT') return route.fulfill({ status: 500, json: { error: 'Synthetic save failure' } });
+    } else if (p === '/api/test-provider') data = { message: 'Synthetic connection succeeded', testReceipt: 'synthetic-opaque-receipt' };
+    else if (p === '/api/settings' && request.method() === 'PUT') {
+      settingsReceipts.push(request.postDataJSON().testReceipt ?? null);
+      return route.fulfill({ status: 500, json: { error: 'Synthetic save failure' } });
+    }
     else if (p === '/api/settings') data = { provider: 'openai', model: 'gpt-6.1-sol', enabled: false, monthlyBudget: 20, dailyLimit: 20, configured: false, youtubeConfigured: false, providers: [] };
     else if (p === '/api/usage') data = { month: '2026-11', cost: 0, inputTokens: 0, outputTokens: 0, analyzedToday: 0 };
     else if (p === '/api/sources') data = { sources: populated ? [source] : [] };
@@ -56,7 +60,7 @@ async function fixture(page, { newAccount = false, populated = false, progressFa
   });
   await page.goto('/');
   await expect(page.locator('[data-tour="tour-launcher"]')).toBeVisible();
-  return { state, evidence, requests, errors };
+  return { state, evidence, requests, settingsReceipts, errors };
 }
 
 for (const width of [320, 360, 390, 430, 1440]) {
@@ -141,7 +145,13 @@ test('AI draft survives tour navigation cancellation and failed save; test inval
   await expect(page.locator('.test-result')).toContainText('Connection successful');
   await page.locator('#ai-model').fill('synthetic-model');
   await expect(page.locator('.test-result')).toHaveCount(0);
-  await page.locator('[data-tour="ai-save"]').last().click();
+  await page.locator('[data-tour="ai-save"] button').click();
+  await expect.poll(() => f.settingsReceipts.at(-1)).toBe(null);
+  await expect(key).toHaveValue('SYNTHETIC_SENTINEL_NOT_A_KEY');
+  await page.locator('[data-tour="ai-test"] button').click();
+  await expect(page.locator('.test-result')).toContainText('Connection successful');
+  await page.locator('[data-tour="ai-save"] button').click();
+  await expect.poll(() => f.settingsReceipts.at(-1)).toBe('synthetic-opaque-receipt');
   await expect(key).toHaveValue('SYNTHETIC_SENTINEL_NOT_A_KEY');
   await page.locator('.tour-chapters select').selectOption('profile');
   page.once('dialog', dialog => dialog.dismiss());
@@ -150,5 +160,16 @@ test('AI draft survives tour navigation cancellation and failed save; test inval
   expect(JSON.stringify(f.requests)).not.toContain('SYNTHETIC_SENTINEL');
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
   expect(stored).not.toContain('SYNTHETIC_SENTINEL');
+  expect(f.errors).toEqual([]);
+});
+
+
+test('a cross-tab dismissal clears an already visible welcome on focus', async ({ page }) => {
+  const f = await fixture(page, { newAccount: true });
+  await expect(page.locator('.tour-region').getByRole('button', { name: 'Start setup', exact: true })).toBeVisible();
+  // Simulate another tab's already committed account-scoped state.
+  f.state.status = 'dismissed'; f.state.revision++; f.state.firstOfferedAt = new Date().toISOString();
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.locator('.tour-region')).toHaveCount(0);
   expect(f.errors).toEqual([]);
 });

@@ -406,7 +406,7 @@ export async function analyzePending(env: Env, limit = 3, userId?: string): Prom
   }
   return {analyzed,remaining:pending.length-analyzed};
 }
-export async function testProvider(env: Env, overrideConfig?: Partial<ProviderConfig>): Promise<{ok:true;provider:Provider;model:string;message:string}> {
+export async function testProvider(env: Env, overrideConfig?: Partial<ProviderConfig>,receiptIdentity?:import('./onboarding').TestReceiptIdentity): Promise<{ok:true;provider:Provider;model:string;message:string;testReceipt?:string}> {
   // Draft connection tests may change credentials/model, never the saved spending limits.
   const saved=await getConfig(env);const provider=overrideConfig?.provider??saved.provider;
   if (!PROVIDERS.includes(provider)) throw new HttpError(400,'服务商无效。');
@@ -429,7 +429,9 @@ export async function testProvider(env: Env, overrideConfig?: Partial<ProviderCo
   try {
     const result=await callModel(config,key,'Reply with OK.',true);await settleResult(env,config,reservationId,result,!result.issue);settled=true;
     if(result.issue)throw new ProviderDiagnosticError(result.issue);
-    return {ok:true,provider:config.provider,model:config.model,message:'连接成功。测试用量已计入本站用量。'};
+    let testReceipt:string|undefined;
+    if(receiptIdentity)try{const {issueTestReceipt}=await import('./onboarding');testReceipt=await issueTestReceipt(env,receiptIdentity,config,key);}catch{/* Optional receipt failure cannot fail an already billed successful test. */}
+    return {ok:true,provider:config.provider,model:config.model,message:'连接成功。测试用量已计入本站用量。',...(testReceipt?{testReceipt}:{})};
   } catch (error) {
     if(!settled)await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});
     const publicError=providerMessage(error);

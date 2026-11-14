@@ -76,17 +76,19 @@ export default function AiSettings({settings,onChange,usage,notify,reload,onDirt
   const drafts=useRef<Partial<Record<Provider,AdvancedConfig>>>({});
   const dirty=useRef(false);
   const draftRevision=useRef(0);
+  // Opaque server proof lives only in this mounted form, never browser storage or tour state.
+  const testReceipt=useRef<{value:string;revision:number}|null>(null);
   const [saveStatus,setSaveStatus]=useState<'saved'|'unsaved'|'saving'|'error'>('saved');
-  const markUnsaved=()=>{draftRevision.current++;dirty.current=true;onDirtyChange?.(true);setSaveStatus('unsaved');setTestDiagnostic(null);setTestResult('');setError('');};
+  const markUnsaved=()=>{testReceipt.current=null;draftRevision.current++;dirty.current=true;onDirtyChange?.(true);setSaveStatus('unsaved');setTestDiagnostic(null);setTestResult('');setError('');};
   useEffect(()=>{if(!dirty.current)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[saveStatus]);
   useEffect(()=>{
     if(dirty.current)return;
-    draftRevision.current++;
+    testReceipt.current=null;draftRevision.current++;
     setDraft(settings);setTemperature(settings.temperature===undefined?'':String(settings.temperature));
     setInputPrice(settings.inputPricePerMillion===undefined?'':String(settings.inputPricePerMillion));setOutputPrice(settings.outputPricePerMillion===undefined?'':String(settings.outputPricePerMillion));
     drafts.current={...settings.profiles};
   },[settings]);
-  useEffect(()=>()=>onDirtyChange?.(false),[onDirtyChange]);
+  useEffect(()=>()=>{testReceipt.current=null;onDirtyChange?.(false);},[onDirtyChange]);
   const update=<K extends keyof AdvancedConfig>(field:K,value:AdvancedConfig[K])=>{markUnsaved();setDraft(old=>({...old,[field]:value}));setTestResult('');setError('');};
   const current=defaults[draft.provider];
   const isOpenRouter=draft.provider==='custom'&&(draft.providerName==='OpenRouter'||draft.baseUrl==='https://openrouter.ai/api/v1'||(typeof draft.baseUrl==='string'&&draft.baseUrl.includes('openrouter.ai')));
@@ -119,14 +121,14 @@ export default function AiSettings({settings,onChange,usage,notify,reload,onDirt
     if(!validate()){setSaveStatus('error');return;}
     setSaving(true);setSaveStatus('saving');
     try{
-      const data=await request<Settings>('/api/settings',{...modelPayload(),enabled:draft.enabled,monthlyBudget:draft.monthlyBudget,dailyLimit:draft.dailyLimit,youtubeKey:youtubeKey.trim()||undefined},'PUT');
-      dirty.current=false;onDirtyChange?.(false);onBusinessChange?.('settings-saved');setSaveStatus('saved');setNeedsReauth(false);onChange(data);setKey('');setYoutubeKey('');setTestDiagnostic(null);setTestResult('');setError('');
+      const data=await request<Settings>('/api/settings',{...modelPayload(),enabled:draft.enabled,monthlyBudget:draft.monthlyBudget,dailyLimit:draft.dailyLimit,youtubeKey:youtubeKey.trim()||undefined,testReceipt:testReceipt.current?.revision===draftRevision.current?testReceipt.current.value:undefined},'PUT');
+      testReceipt.current=null;dirty.current=false;onDirtyChange?.(false);onBusinessChange?.('settings-saved');setSaveStatus('saved');setNeedsReauth(false);onChange(data);setKey('');setYoutubeKey('');setTestDiagnostic(null);setTestResult('');setError('');
       notify(t('设置已安全保存。','Settings saved securely.'));
       try{await reload();}catch{notify(t('设置已保存，用量信息暂未刷新。','Settings were saved. Usage information could not be refreshed.'));}
     }catch(cause){const message=localizedError(cause);setSaveStatus('error');setError(message);notify(message);}finally{setSaving(false);}
   };
-  const test=async()=>{if(saving||testing||!validate(true))return;const testedRevision=draftRevision.current;setTesting(true);setTestDiagnostic(null);setTestResult('');try{const result=await request<{message?:string}>('/api/test-provider',modelPayload());if(testedRevision!==draftRevision.current)return;setNeedsReauth(false);const message=t('连接成功，模型可以使用。','Connection successful. The model is available.');setTestResult(message);notify(message);onBusinessChange?.('provider-tested');try{await reload();}catch{notify(t('连接测试成功，用量信息暂未刷新。','The connection test succeeded. Usage information could not be refreshed.'));}}catch(cause){if(testedRevision!==draftRevision.current)return;const message=localizedError(cause);setTestDiagnostic(cause instanceof SettingsRequestError?cause.diagnostic||null:null);setTestResult(message);notify(message);}finally{setTesting(false);}};
-  const clearKey=async(youtube=false)=>{setSaving(true);try{const data=await request<Settings>('/api/settings',{provider:draft.provider,...(youtube?{clearYoutubeKey:true}:{clearKey:true})},'PUT');onChange(data);if(youtube)setYoutubeKey('');else setKey('');notify(t("密钥已移除。","API key removed."));await reload();}catch(cause){notify(localizedError(cause));}finally{setSaving(false);}};
+  const test=async()=>{if(saving||testing||!validate(true))return;const testedRevision=draftRevision.current;testReceipt.current=null;setTesting(true);setTestDiagnostic(null);setTestResult('');try{const result=await request<{message?:string;testReceipt?:string}>('/api/test-provider',modelPayload());if(testedRevision!==draftRevision.current)return;if(typeof result.testReceipt==='string'&&result.testReceipt.length>0&&result.testReceipt.length<=16384){testReceipt.current={value:result.testReceipt,revision:testedRevision};dirty.current=true;onDirtyChange?.(true);setSaveStatus('unsaved');}setNeedsReauth(false);const message=t('连接成功，模型可以使用。','Connection successful. The model is available.');setTestResult(message);notify(message);onBusinessChange?.('provider-tested');try{await reload();}catch{notify(t('连接测试成功，用量信息暂未刷新。','The connection test succeeded. Usage information could not be refreshed.'));}}catch(cause){if(testedRevision!==draftRevision.current)return;const message=localizedError(cause);setTestDiagnostic(cause instanceof SettingsRequestError?cause.diagnostic||null:null);setTestResult(message);notify(message);}finally{setTesting(false);}};
+  const clearKey=async(youtube=false)=>{testReceipt.current=null;draftRevision.current++;setSaving(true);try{const data=await request<Settings>('/api/settings',{provider:draft.provider,...(youtube?{clearYoutubeKey:true}:{clearKey:true})},'PUT');onChange(data);if(youtube)setYoutubeKey('');else setKey('');notify(t("密钥已移除。","API key removed."));await reload();}catch(cause){notify(localizedError(cause));}finally{setSaving(false);}};
   return <section className="management-page settings-page ai-settings-page">
     <div className="welcome-eyebrow"><span className="amber-dash"/>{t('专为你而来','MADE TO FIT YOU')}</div>
     <p className="tour-cost-warning">{getOnboardingMessages(language).help.costWarning}</p>
