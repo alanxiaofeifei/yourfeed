@@ -47,8 +47,8 @@ describe('observed spotlight and isolated tour rendering',()=>{
   expect(spotlight).toContain('cancelAnimationFrame(frame)');expect(spotlight).toContain('resize.disconnect()');expect(spotlight).toContain('mutations.disconnect()');
  });
  it('makes dimming pointer-transparent and disables movement for reduced motion',()=>{
-  expect(css).toContain('pointer-events:none');expect(css).toContain('@media(prefers-reduced-motion:reduce)');expect(css).toContain('transform:none!important');
-  expect(spotlight).toContain("behavior:reduced.matches?'auto':'smooth'");
+  expect(css).toContain('pointer-events:none');expect(css).toContain('@media(prefers-reduced-motion:reduce)');expect(css).toContain('animation:none!important');expect(css).toContain('transition:opacity');
+  expect(spotlight).toContain("behavior:'instant'");
  });
 });
 
@@ -68,7 +68,7 @@ describe('frontend tour safety boundaries', () => {
  it('gates auto welcome on successful account-scoped initial product reads and clears terminal welcomes',()=>{
   expect(home).toContain('ready:!!sessionUserId&&sidebarReadyFor===sessionUserId');
   expect(tour).toContain('if(!ready||error){setWelcome(false);return;}');
-  expect(tour).toContain("if(value.state.status==='dismissed'||value.state.status==='completed'){setOpen(false);setWelcome(false);}");
+  expect(tour).toContain("if(value&&(value.state.status==='dismissed'||value.state.status==='completed')){setOpen(false);setWelcome(false);}");
  });
  it('retains forms until explicit guarded destination navigation',()=>{
   expect(home).toContain('leavesForm&&dirtyForm.current&&!window.confirm(tour.dirtyConfirm)');

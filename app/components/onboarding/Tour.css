@@ -1,37 +1,21 @@
-/* Editorial companion to FeedMotion v2: paper, rules, restrained chapter reveals. */
-.tour-home,.tour-slot{grid-column:1/-1;min-width:0}
-.tour-slot:empty{display:none}
+/* FeedMotion v2 paper, amber rules and restrained 180/360ms motion. */
+.tour-home,.tour-slot{grid-column:1/-1;min-width:0}.tour-slot:empty{display:none}
 .tour-launcher{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 20px;border:1px solid var(--amber);border-radius:2px;background:var(--surface);color:var(--amber);font-weight:700;cursor:pointer;margin-bottom:16px}
-.tour-region{position:relative;z-index:51;grid-column:1/-1;min-width:0;border-block:1px solid var(--line);border-top:3px solid var(--amber);padding:20px 0;margin:0 0 24px;background:var(--bg);color:inherit;overflow-wrap:anywhere;animation:tour-open var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
-.tour-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-.tour-heading h2{font-family:Georgia,'Noto Serif SC',serif;font-size:24px;line-height:1.4;margin:0;text-wrap:balance}
-.tour-heading h2:focus{outline:none}
-.tour-region p{line-height:1.65;margin-top:12px}
-.tour-step-body{animation:tour-step var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
-.tour-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.tour-actions button,.tour-chapters select{min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:2px;background:var(--surface);color:inherit;cursor:pointer}
-.tour-actions button:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}
-.tour-actions button:disabled{opacity:.5;cursor:default}
-.tour-actions button:first-child{border-color:var(--amber);color:var(--amber)}
-.tour-chapters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;font-size:13px}
-.tour-chapters select{max-width:100%}
-.tour-evidence{display:flex;gap:8px;flex-wrap:wrap}
-.tour-evidence span{border-bottom:1px solid var(--line);padding:4px 0;margin-right:8px;font-size:12px}
+.tour-region{position:fixed;z-index:101;left:12px;top:80px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;box-sizing:border-box;border:1px solid var(--line);border-top:3px solid var(--amber);border-radius:3px;padding:16px;background:var(--bg);color:inherit;box-shadow:0 12px 40px #0002;overflow-wrap:anywhere;animation:tour-open var(--motion-fast,180ms) ease-out both}
+.tour-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.tour-heading h2{font-family:Georgia,'Noto Serif SC',serif;font-size:20px;line-height:1.35;margin:0;text-wrap:balance}.tour-heading h2:focus{outline:none}
+.tour-region p{font-size:14px;line-height:1.55;margin:10px 0}.tour-step-body{animation:tour-step var(--motion-fast,180ms) ease-out both}
+.tour-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.tour-actions button,.tour-chapters select{min-height:44px;padding:7px 10px;border:1px solid var(--line);border-radius:2px;background:var(--surface);color:inherit;cursor:pointer;font-size:13px}
+.tour-actions button:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}.tour-actions button:disabled{opacity:.5;cursor:default}.tour-actions button:first-child{border-color:var(--amber);color:var(--amber)}
+.tour-chapters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:13px}.tour-chapters select{max-width:100%}
+.tour-evidence{display:flex;gap:6px;flex-wrap:wrap}.tour-evidence span{border-bottom:1px solid var(--line);padding:3px 0;font-size:12px}
 .tour-progress{font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;letter-spacing:.03em}
-.tour-help{margin-top:16px}.tour-help summary{min-height:44px;cursor:pointer;padding:10px 0}.tour-help a{color:inherit;text-decoration:underline}.tour-help li{margin-bottom:10px;line-height:1.6}
-[data-tour-highlight=true]{scroll-margin-block:110px}
-.tour-spotlight{position:fixed;z-index:69;pointer-events:none;border:2px solid var(--amber);border-radius:3px;box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--amber),0 0 0 100vmax #0003;animation:tour-spotlight var(--motion-base,360ms) var(--motion-ease-out,ease-out) both}
-.tour-spotlight[hidden]{display:none}
-.tour-region :focus-visible,.tour-launcher:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
-.source-import-modal .tour-region,.source-editor-modal .tour-region{margin-top:28px}
-.tour-cost-warning{padding:14px;border:1px solid var(--amber);line-height:1.6}
+.tour-help{margin-top:8px}.tour-help summary{min-height:36px;cursor:pointer;padding:8px 0;font-size:13px}.tour-help a{color:inherit;text-decoration:underline}.tour-help li{margin-bottom:8px;line-height:1.6}
+[data-tour-highlight=true]{scroll-margin-block:90px}
+.tour-spotlight{position:fixed;left:0;top:0;z-index:100;pointer-events:none;box-sizing:border-box;border:2px solid var(--amber);border-radius:3px;box-shadow:0 0 0 3px var(--bg),0 0 0 100vmax #0003;transition:transform var(--motion-base,360ms) var(--motion-ease-out,ease-out),opacity var(--motion-fast,180ms) ease;will-change:transform}
+.tour-spotlight[hidden]{display:none}.tour-pointer{position:absolute;top:100%;font-size:28px;line-height:1;color:var(--amber);text-shadow:0 1px var(--bg);animation:tour-point 1.2s ease-in-out infinite}.tour-pointer[data-direction=down]{top:auto;bottom:100%;rotate:180deg}
+.tour-region :focus-visible,.tour-launcher:focus-visible{outline:3px solid var(--amber);outline-offset:3px}.tour-cost-warning{padding:10px;border:1px solid var(--amber);line-height:1.6}
 .tour-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-@keyframes tour-open{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes tour-step{from{opacity:.25;transform:translateY(5px)}to{opacity:1;transform:none}}
-@keyframes tour-spotlight{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
-/* The short inert exit retains document flow; no floating panel can cover controls. */
-@media(max-width:600px){.tour-region{padding:14px 0}.tour-heading{gap:8px}.tour-heading h2{font-size:20px}.tour-actions button{flex:1 1 125px}.tour-chapters select{width:100%}}
-@media(prefers-reduced-motion:reduce){.tour-region,.tour-step-body,.tour-spotlight{animation:none!important;transition:none!important;transform:none!important}[data-tour-highlight=true]{scroll-behavior:auto!important}}
-
-.tour-exiting{pointer-events:none}.tour-exiting .tour-region{animation:tour-close var(--motion-fast,180ms) ease-out both}@keyframes tour-close{to{opacity:0;transform:translateY(-4px)}}
-@media(prefers-reduced-motion:reduce){.tour-exiting{display:none}}
+@keyframes tour-open{from{opacity:0}to{opacity:1}}@keyframes tour-step{from{opacity:.6}to{opacity:1}}@keyframes tour-point{50%{translate:0 5px}}
+@media(max-width:600px){.tour-region{padding:12px;max-height:calc(60dvh - 16px);border-radius:8px 8px 3px 3px}.tour-heading{gap:8px}.tour-heading h2{font-size:18px}.tour-region p{font-size:13px}.tour-actions button{flex:1 1 auto;padding-inline:8px}.tour-chapters select{width:100%}}
+@media(prefers-reduced-motion:reduce){.tour-region,.tour-step-body,.tour-pointer{animation:none!important}.tour-spotlight{transition:opacity var(--motion-fast,180ms) ease!important;will-change:auto}[data-tour-highlight=true]{scroll-behavior:auto!important}}
