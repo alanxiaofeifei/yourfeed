@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock3, Loader2, Newspaper, RefreshCw, Sparkles } from 'l
 import type { ContentItem } from '../../shared/types';
 import './DailyBriefing.css';
 import { useI18n, localeTag } from '../i18n';
+import {useDailyDigest} from './DailyDigest';
 import ContentActions from './ContentActions';
 import { computeStaggerDelay } from './FeedMotion';
 
@@ -16,7 +17,8 @@ interface Briefing {
   lastUpdated?: string;
 }
 
-export default function DailyBriefing({ revision, onOpen, onNews }: {
+export default function DailyBriefing({ revision, onOpen, onNews, onAiSettings }: {
+  onAiSettings?: () => void;
   revision: number;
   onOpen: (item: ContentItem) => void;
   onNews: () => void;
@@ -45,16 +47,19 @@ export default function DailyBriefing({ revision, onOpen, onNews }: {
     return () => controller.abort();
   }, [revision, retry, language]);
 
+  const digest=useDailyDigest({ready:!!briefing,hasPicks:!!briefing?.items.length,revision:`${revision}:${retry}`,onOpen,onAiSettings});
+
   return <section className="daily-briefing" aria-labelledby="daily-briefing-title" aria-busy={loading}>
     <header className="daily-briefing-heading">
       <div className="daily-briefing-label"><span className="daily-briefing-icon"><Newspaper size={17}/></span><div>
         <div className="daily-briefing-eyebrow">YOUR DAILY SIGNAL</div>
         <h2 id="daily-briefing-title">{t('今日必看','Daily picks')} <span>{briefing?.window === 'recent' ? t('近 7 天精选','Past 7 days') : t('为你精选','For you')}</span></h2>
       </div></div>
-      <button className="daily-briefing-all" onClick={onNews}>{t('全部新闻','All news')} <ArrowUpRight size={13}/></button>
+      <div className="daily-briefing-controls">{digest.button}<button className="daily-briefing-all" onClick={onNews}>{t('全部新闻','All news')} <ArrowUpRight size={13}/></button></div>
     </header>
     <p className="daily-briefing-intro">{t('按你的兴趣与目标筛选，最多 3 条值得关注的变化。','Up to 3 worthwhile changes, selected for your interests and goals.')}</p>
     {briefing?.window === 'recent' && <div className="daily-briefing-window"><Clock3 size={11}/>{t('今日暂无合适的重大更新，以下来自最近 7 天，日期见各条来源。','No matching major updates today. These picks are from the past 7 days; see each source date.')}</div>}
+    {digest.card}
     {error ? <div className="daily-briefing-empty" role="status"><span>{error}</span><button onClick={() => setRetry(value => value + 1)}><RefreshCw size={12}/>{t('重试','Retry')}</button></div>
       : !briefing && loading ? <div className="daily-briefing-empty" role="status"><Loader2 size={14} className="spin"/>{t('正在挑选重要信号…','Finding worthwhile signals…')}</div>
       : briefing?.items.length ? <div className="daily-briefing-list">{briefing.items.map(({ item, reason, signal }, index) => {
