@@ -221,13 +221,13 @@ async function settleResult(env: Env, config: ProviderConfig, reservationId: str
 /** One owner-triggered task, using the active provider and the shared spending ledger.
  * Automatic reading need not be enabled. Validation happens before successful settlement;
  * even unusable replies with known usage are charged to the application budget once. */
-export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{timeoutSeconds?:number;prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
-  const saved=await getConfig(env);const config={...saved,...(task.timeoutSeconds?{timeoutSeconds:task.timeoutSeconds}:{})};const key=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
+export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{timeoutSeconds?:number;maxOutputTokens?:number;reservationKey?:string;prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
+  const saved=await getConfig(env);const config={...saved,...(task.timeoutSeconds?{timeoutSeconds:task.timeoutSeconds}:{}),...(task.maxOutputTokens?{maxOutputTokens:task.maxOutputTokens}:{})};const key=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
   if(!key){const value=await runFreeAi(env,{...task,prompt:JSON.stringify({required_output_schema:task.schema,untrusted_task_data:task.prompt})});return value===undefined?{needsConfiguration:true}:{needsConfiguration:false,value,model:'Free public channel',provider:'custom'};}
   validateRuntimeConfig(config);
   if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(task.instructions+'\n'+task.prompt)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  const {reservationId}=await reserve(env,config,'profile-advice-'+digest,task.prompt,false,profile,task.instructions);
+  const {reservationId}=await reserve(env,config,task.reservationKey||'profile-advice-'+digest,task.prompt,false,profile,task.instructions);
   let result:ModelResult;
   try{result=await callModel(config,key,task.prompt,false,profile,task);}catch(error){await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});throw providerMessage(error);}
   if(result.issue){await settleResult(env,config,reservationId,result,false);throw new ProviderDiagnosticError(result.issue);}

@@ -61,6 +61,7 @@ export async function fixture(page, { newAccount = false, populated = false, pro
     else if (p === '/api/usage') data = { month: '2026-11', cost: 0, inputTokens: 0, outputTokens: 0, analyzedToday: 0 };
     else if (p === '/api/sources') data = { sources: populated ? [source] : [] };
     else if (p === '/api/sources/recommendations') data = { recommendations: [{ ...source, starter: true, language: 'en', contentType: 'article', description: { en: 'Synthetic catalog feed', zh: '合成目录来源' }, verification: { status: 'unverified', coverage: 'unknown' } }] };
+    else if (p === '/api/briefing/digest') data = { status: 'none', channel: 'free', nextAllowedAt: 0 };
     else if (p === '/api/briefing') data = { date: '2026-11-12', timeZone: 'UTC', window: 'empty', items: [] };
     else if (p === '/api/background') data = {refreshMode:'on_open',effectiveRefreshMode:'on_open',enabled:false,aiEnabled:false,intervalHours:6,schedulerConfigured:false};
     else if (p === '/api/storage') data = { enabled: false, expiringCount: 0, expiredCount: 0 };

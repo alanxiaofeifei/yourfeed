@@ -34,6 +34,10 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     const userId=(await requireUser(request,env)).id;
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
     if(!['GET','HEAD'].includes(request.method))checkWriteRequest(request);
+    if(path==='/api/briefing/digest'&&request.method==='GET'){
+      const {getDigest}=await import('./digest');
+      return response(await getDigest(env,userId,localeFromTag(request.headers.get('accept-language')||'en')));
+    }
     await initialize(env);
     if(path==='/api/onboarding'&&request.method==='GET')return response(await getOnboarding(env,userId));
     if(path==='/api/onboarding'&&request.method==='PATCH')return response(await mutateOnboarding(env,userId,await readJson(request)));
@@ -66,6 +70,12 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/maintenance'&&request.method==='POST'){const index=await rebuildSearchIndex(env,5);return response({...await cleanupRetention(env,{limit:5}),index});}
     if(path==='/api/background'&&request.method==='GET'){const {backgroundStatus}=await import('./background');return response(await backgroundStatus(env));}
     if(path==='/api/background'&&request.method==='PUT'){await requireRecentAuth(request,env);const {saveBackgroundPolicy}=await import('./background');return response(await saveBackgroundPolicy(env,await readJson(request),userId));}
+    if(path==='/api/briefing/digest'&&request.method==='POST'){
+      const {generateDigest}=await import('./digest');
+      const language=localeFromTag(request.headers.get('accept-language')||'en');
+      const result=await generateDigest(env,userId,language,await readJson(request));
+      return response(result.body,result.status);
+    }
     if(path==='/api/briefing'&&request.method==='GET'){
       const [items,sources,feedback,lastUpdated]=await Promise.all([listContent(env),listSources(env),readFeedback(env,userId),getState(env,'last-sync')]);
       return response(selectBriefing(items,sources,feedback,new Date(),lastUpdated||undefined,await presentationProfile()));
