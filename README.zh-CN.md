@@ -13,6 +13,14 @@
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
+## 首次配置教程视频
+
+**中文旁白与字幕 · 2 分 35 秒 · v1。** 按当前界面一步步演示：首页「新手引导」、偏好卡片、添加来源、免费公开 AI 通道（可能失败，可「恢复默认」）、可选的自带 AI Key（费用自理）、可选的 YouTube Data API v3 Key、刷新方式与「不喜欢」按钮。画面只用演示数据，旁白为 AI 合成。
+
+<a href="https://alanzhu.dev/#yourfeed-guide-video"><img src="https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.jpg" width="320" alt="观看 YourFeed 首次配置教程（中文，2 分 35 秒）"></a>
+
+[MP4](https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.mp4) · [字幕（WebVTT）](https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.zh.vtt)
+
 **项目／托管入口：**[yourfeed.alanzhu.dev](https://yourfeed.alanzhu.dev/)
 
 **如何登录：**这个地址不开放公众注册，也没有共享演示账户。运营者完成独立实例配置并分配邀请后，受邀用户才能进入自己的实例。没有邀请可以先看[界面截图](#界面预览)，或通过下方按钮部署自己的实例，再使用该实例配置的 `OWNER_EMAIL` 登录。现有站点已部署，不等于新增托管流程、邮件和免费容量已经通过生产验收。
