@@ -13,6 +13,14 @@ A private home for videos, articles, news, saved posts and open-source projects.
 
 [MP4](https://alanzhu.dev/assets/yourfeed-intro-zh-v1.mp4) · [YourFeed](https://yourfeed.alanzhu.dev/)
 
+## First-use configuration guide video
+
+**Chinese narration and subtitles · 2 min 35 s · v1.** A step-by-step walkthrough of the current interface: the home **Getting started** tour, preference cards, adding sources, the free public AI channel (it may fail; **Restore default**), optionally your own AI key (costs are yours), the optional YouTube Data API v3 key, refresh modes and the dislike button. Screens use demo data only; narration is AI-generated.
+
+<a href="https://alanzhu.dev/#yourfeed-guide-video"><img src="https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.jpg" width="320" alt="Watch the YourFeed first-use configuration guide (Chinese, 2 min 35 s)"></a>
+
+[MP4](https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.mp4) · [Subtitles (WebVTT, Chinese)](https://alanzhu.dev/assets/yourfeed-config-guide-zh-v1.zh.vtt)
+
 **Project / hosted entry:** [yourfeed.alanzhu.dev](https://yourfeed.alanzhu.dev/)
 
 **How to sign in:** this address is not public registration or a shared demo account. The operator must provision and assign independent instances before invited users can sign in. Visitors without an invitation can see the [screenshots](#interface-preview) or deploy their own instance below. A self-hosted instance uses the `OWNER_EMAIL` configured by its owner. Existing deployed behavior is not evidence that the new hosted setup has passed production acceptance.
