@@ -1,5 +1,17 @@
 # 当前项目状态
 
+## 未完成（2026-11-15 收尾登记）
+
+首次使用引导（#11–#16 / PR #8）和 AI 速览（#21 / PR #22）已上线生产与 member-001，预览已拆除，不必重做。仍待执行：
+
+- [Issue #26](https://github.com/alanxiaofeifei/yourfeed/issues/26) 五人独立受邀托管（目前仅有 member-001；邀请链接先交给 Alan，不要联系 linh）
+- [Issue #27](https://github.com/alanxiaofeifei/yourfeed/issues/27) 首次使用配置引导视频（README 入口已有，成品视频未按上线后 UI 制作）
+
+跨项目索引：[project-overview#5](https://github.com/alanxiaofeifei/project-overview/issues/5)
+
+---
+
+
 ## 生产上线（2026-11-15 12:55 UTC+8）：免费通道 Groq 补充 / PR #24
 - 合并 [PR #24](https://github.com/alanxiaofeifei/yourfeed/pull/24) → `main` `d4a293ad2ed93ae47bbc8bd053b3fa93ae0de748`。顺序：Groq `openai/gpt-oss-120b` →（仅限流）`openai/gpt-oss-20b` → OVHcloud → Pollinations；仍计入每实例每天 10 次。
 - 运营者 secret `FREE_AI_GROQ_API_KEY`（Alan 提供的 Groq Key，经 stdin 写入，值不入仓库/日志）已设置于 `yourfeed` 与 `yourfeed-member-001`。无迁移；部署前书签：生产 `0000002a-00000000-00005124-14fa0f9b4bde8999c30c1fa664fd75c7`，member `0000004e-00000000-00005124-5833d50d23a7930aa0842128207b15a2`。
