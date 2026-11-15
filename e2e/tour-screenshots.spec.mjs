@@ -6,6 +6,8 @@ for (const shot of [
   { file:'desktop-tour-zh-CN.png', width:1280, height:800, language:'zh' },
   { file:'mobile-tour-zh-CN.png', width:390, height:844, language:'zh' },
   { file:'desktop-tour-en.png', width:1280, height:800, language:'en' },
+  { file:'desktop-tour-zh-TW.png', width:1280, height:800, language:'zh-TW' },
+  { file:'desktop-tour-vi.png', width:1280, height:800, language:'vi' },
   { file:'reduced-motion.png', width:1280, height:800, language:'zh', reduced:true },
 ]) test(`phase A screenshot ${shot.file}`, async ({ page }) => {
   test.skip(process.env.TOUR_SCREENSHOTS !== '1', 'Opt-in synthetic screenshot evidence');

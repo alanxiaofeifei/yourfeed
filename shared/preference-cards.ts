@@ -21,6 +21,17 @@ export type PreferenceState=z.infer<typeof preferenceStateSchema>;
 /** Balanced four-language bank; plain data is also used by the synthetic browser fixture. */
 export function curatedQuestions(language:Language):PreferenceQuestion[]{return structuredClone(bank[language]) as PreferenceQuestion[];}
 export function newPreferenceState(language:Language):PreferenceState{return {revision:0,answers:{},source:'curated',questions:curatedQuestions(language),language,position:0,manualTopics:[],manualInterest:''};}
+/** A locale switch uses the static bank, never an AI call. Keep question order,
+ * stable answer IDs and the cursor, including AI IDs matched by dimension. */
+export function localizePreferenceState(state:PreferenceState,language:Language):PreferenceState{
+ if(state.language===language)return state;
+ const bank=curatedQuestions(language);
+ const questions=state.questions.map(question=>{
+  const translated=bank.find(q=>q.id===question.id&&q.dimension===question.dimension)??bank.find(q=>q.dimension===question.dimension)!;
+  return {...translated,id:question.id};
+ });
+ return {...state,language,source:'curated',questions};
+}
 export function preferenceSummary(state:PreferenceState){
  const sourceIds=new Set<string>();const topicWeights:Partial<Record<Topic,number>>={};
  for(const q of state.questions){const choice=state.answers[q.id];if(choice!=='A'&&choice!=='B')continue;const option=choice==='A'?q.optionA:q.optionB;option.sourceIds.forEach(id=>sourceIds.add(id));option.topics.forEach(topic=>topicWeights[topic]=Math.min(1,(topicWeights[topic]||0)+.25));}

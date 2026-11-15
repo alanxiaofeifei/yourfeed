@@ -1,6 +1,8 @@
 import { test, expect } from 'playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 
+import {ONBOARDING_MESSAGES} from '../shared/onboarding-messages.ts';
+import {tourSummary} from '../app/components/onboarding/optimistic.ts';
 import { fixture, steps } from './fixture.mjs';
 
 async function chooseChapter(page, chapter) {
@@ -330,3 +332,23 @@ for (const language of ['zh', 'en', 'zh-TW', 'vi']) {
     expect(f.errors).toEqual([]);
   });
 }
+
+test('live language changes on a later tour step translate the full popover without changing progress',async({page})=>{
+ const f=await fixture(page,{populated:true,language:'zh'});await page.locator('[data-tour="tour-launcher"]').click();const region=page.locator('.tour-region');
+ await region.getByRole('button',{name:ONBOARDING_MESSAGES.zh.actions.resume,exact:true}).click();
+ await region.getByRole('button',{name:ONBOARDING_MESSAGES.zh.actions.next,exact:true}).click();await expect(region).toHaveAttribute('data-step','profile.interests');
+ await chooseChapter(page,'ai');await region.getByRole('button',{name:ONBOARDING_MESSAGES.zh.actions.next,exact:true}).click();await expect.poll(()=>f.state.currentStep).toBe('ai.provider');
+ await page.locator('.tour-help summary').click();const snapshot=structuredClone(f.state),requestCount=f.requests.length;
+ for(const language of ['vi','zh','en','zh-TW','en']){
+  const m=ONBOARDING_MESSAGES[language];await page.locator('[data-tour="language"] select').selectOption(language);
+  await expect(region).toHaveAttribute('data-step','ai.provider');await expect(region.locator('h2')).toHaveText(m.steps['ai.provider'].title);
+  await expect(region.locator('#tour-body')).toHaveText(tourSummary(m.steps['ai.provider'].body));await expect(region.locator('.tour-help > p').first()).toHaveText(m.steps['ai.provider'].body);
+  await expect(region.locator('.tour-progress')).toContainText(m.status.progress.replace('{current}','11').replace('{total}','19'));
+  for(const action of ['openTarget','back','skip','next','dismiss','later'])await expect(region.getByRole('button',{name:m.actions[action],exact:true})).toBeVisible();
+  await expect(region.locator('.tour-help summary')).toHaveText(m.actions.help);await expect(region.locator('.tour-evidence')).toContainText(m.status.notConfigured);
+  for(const [chapter,label] of Object.entries(m.chapters))await expect(region.locator(`.tour-chapters option[value="${chapter}"]`)).toHaveText(label);
+  await expect(region.locator('.tour-help')).toContainText(m.help.costWarning);await expect(region.locator('.tour-help section').first().locator('p').first()).toHaveText(m.guides.ai.gemini.summary);
+  expect(f.state).toEqual(snapshot);expect(f.requests).toHaveLength(requestCount);
+ }
+ expect(f.errors).toEqual([]);
+});

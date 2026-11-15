@@ -1,12 +1,12 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {useI18n} from '../i18n';
+import {LanguageToggle,useI18n} from '../i18n';
 import {TOPIC_LABELS,type UserProfile} from '../../shared/profile';
 import type {Source} from '../../shared/types';
 import {freeAiMessages} from '../../shared/free-ai-messages';
 import {preferenceMessages} from '../../shared/preference-messages';
-import {curatedQuestions,newPreferenceState,preferenceStateSchema,questionsSchema,preferenceSummary,preferenceProfile,CARD_TOPICS,type PreferenceState} from '../../shared/preference-cards';
+import {localizePreferenceState,curatedQuestions,newPreferenceState,preferenceStateSchema,questionsSchema,preferenceSummary,preferenceProfile,CARD_TOPICS,type PreferenceState} from '../../shared/preference-cards';
 import './PreferenceCards.css';
 
 const OPEN_EVENT='yourfeed:preference-cards';
@@ -24,17 +24,21 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
  const {language}=useI18n();const m=preferenceMessages[language];
  const [state,setState]=useState<PreferenceState>(()=>newPreferenceState(language));
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(false),[manual,setManual]=useState(false),[done,setDone]=useState(false),[generating,setGenerating]=useState(false);
- const [notice,setNotice]=useState('');const [existing,setExisting]=useState<Source[]>([]);const [excluded,setExcluded]=useState<string[]>([]);const [created,setCreated]=useState<Source[]>([]);
+ const [notice,setNotice]=useState<''|'fallback'|'partial'>('');const [existing,setExisting]=useState<Source[]>([]);const [excluded,setExcluded]=useState<string[]>([]);const [created,setCreated]=useState<Source[]>([]);
  const panel=useRef<HTMLElement>(null),heading=useRef<HTMLHeadingElement>(null),locked=useRef(false),revision=useRef(0),draft=useRef(state),mounted=useRef(true),generation=useRef<AbortController|null>(null);
- const update=(next:PreferenceState)=>{draft.current=next;setState(next);};
- const load=async()=>{setLoading(true);setError(false);try{const [saved,sources]=await Promise.all([request<PreferenceState>('/api/preference-cards',language),request<{sources:Source[]}>('/api/sources',language)]);const valid=preferenceStateSchema.parse(saved);revision.current=valid.revision;update(valid.source==='curated'?{...valid,language,questions:curatedQuestions(language)}:valid);setExisting(sources.sources);setDone(false);setExcluded([]);}catch{setError(true);}finally{setLoading(false);}};
+ const activeLanguage=useRef(language);activeLanguage.current=language;
+ const update=(next:PreferenceState)=>{const localized=localizePreferenceState(next,activeLanguage.current);draft.current=localized;setState(localized);};
+ // Normalize before painting; also normalize every async response against the live locale.
+ if(state.language!==language){const localized=localizePreferenceState(state,language);draft.current=localized;setState(localized);}
+ useEffect(()=>{generation.current?.abort();generation.current=null;},[language]);
+ const load=async()=>{setLoading(true);setError(false);try{const [saved,sources]=await Promise.all([request<PreferenceState>('/api/preference-cards',language),request<{sources:Source[]}>('/api/sources',language)]);const valid=preferenceStateSchema.parse(saved);revision.current=valid.revision;update(valid);setExisting(sources.sources);setDone(false);setExcluded([]);}catch{setError(true);}finally{setLoading(false);}};
  useEffect(()=>{mounted.current=true;void load();return()=>{mounted.current=false;generation.current?.abort();};},[]);
  // Own the active focus scope even when launched from source discovery's dialog.
  useEffect(()=>{const previous=document.activeElement as HTMLElement|null;const outer=document.querySelector<HTMLElement>('[role=dialog]:not(.preference-dialog)');const wasInert=outer?.inert;if(outer)outer.inert=true;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';heading.current?.focus();
   return()=>{document.body.style.overflow=overflow;if(outer)outer.inert=!!wasInert;previous?.focus();};},[]);
  useEffect(()=>{heading.current?.focus({preventScroll:true});},[state.position,manual,done,loading]);
  const persist=async(next:PreferenceState)=>{
-  update(next);setError(false);
+  next=localizePreferenceState(next,activeLanguage.current);update(next);setError(false);
   try{const saved=preferenceStateSchema.parse(await request('/api/preference-cards',language,'PUT',{expectedRevision:revision.current,state:{...next,revision:revision.current}}));revision.current=saved.revision;update(saved);return true;}catch{setError(true);return false;}
  };
  const run=async(action:()=>Promise<void>)=>{if(locked.current)return;locked.current=true;setBusy(true);try{await action();}catch{setError(true);}finally{locked.current=false;if(mounted.current)setBusy(false);}};
@@ -43,18 +47,18 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
  useEffect(()=>{const keyboard=(event:KeyboardEvent)=>{
   if(event.defaultPrevented||event.isComposing)return;
   if(event.key==='Tab'){
-   const items=Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),a[href]')||[]).filter(el=>el.getClientRects().length);const first=items[0],last=items.at(-1);
+   const items=Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),a[href],select:not(:disabled)')||[]).filter(el=>el.getClientRects().length);const first=items[0],last=items.at(-1);
    if(!panel.current?.contains(document.activeElement)||document.activeElement===heading.current){event.preventDefault();(event.shiftKey?last:first)?.focus();}else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}event.stopImmediatePropagation();
   }
   if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();if(!loading&&!locked.current)close();}
-  if(loading||manual||done||generating||locked.current||state.position>=10||event.altKey||event.ctrlKey||event.metaKey||event.target instanceof Element&&event.target.closest('input,textarea,[contenteditable=true]'))return;
+  if(loading||manual||done||generating||locked.current||state.position>=10||event.altKey||event.ctrlKey||event.metaKey||event.target instanceof Element&&event.target.closest('input,select,textarea,[contenteditable=true]'))return;
   if(['1','2','ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();choose(event.key==='1'||event.key==='ArrowLeft'?'A':'B');}
  };document.addEventListener('keydown',keyboard,true);return()=>document.removeEventListener('keydown',keyboard,true);});
  const generate=()=>void run(async()=>{
   setGenerating(true);setNotice('');const abort=new AbortController();generation.current=abort;const timer=setTimeout(()=>abort.abort(),9000);
-  try{const response=await request<{questions:unknown;source:'ai'|'curated'}>('/api/preference-cards/generate',language,'POST',{},abort.signal);const questions=questionsSchema.parse({questions:response.questions}).questions;await persist({...newPreferenceState(language),revision:revision.current,questions,source:response.source==='ai'?'ai':'curated'});if(response.source!=='ai')setNotice(m.fallback);}
-  catch{if(mounted.current){await persist({...newPreferenceState(language),revision:revision.current,questions:curatedQuestions(language)});setNotice(m.fallback);}}
-  finally{clearTimeout(timer);generation.current=null;if(mounted.current)setGenerating(false);}
+  try{const response=await request<{questions:unknown;source:'ai'|'curated'}>('/api/preference-cards/generate',language,'POST',{},abort.signal);if(!mounted.current||abort.signal.aborted||generation.current!==abort||activeLanguage.current!==language)return;const questions=questionsSchema.parse({questions:response.questions}).questions;await persist({...newPreferenceState(language),revision:revision.current,questions,source:response.source==='ai'?'ai':'curated'});if(response.source!=='ai')setNotice('fallback');}
+  catch{if(mounted.current&&activeLanguage.current===language&&generation.current===abort){await persist({...newPreferenceState(language),revision:revision.current,questions:curatedQuestions(language)});setNotice('fallback');}}
+  finally{clearTimeout(timer);if(generation.current===abort)generation.current=null;if(mounted.current)setGenerating(false);}
  });
  const summary=preferenceSummary(state);const isExisting=(locator:string)=>existing.some(source=>source.platform==='rss'&&source.locator===locator);
  const confirm=()=>void run(async()=>{
@@ -70,18 +74,18 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
    setCreated(old=>[...old,...result.created]);setExisting(old=>[...old,...result.created,...result.duplicates.map(item=>({...batch[item.index],id:item.existingId,enabled:true}))]);
    if(result.errors.length)failed=true;
   }
-  if(failed){setNotice(m.partial);await reload();return;}
+  if(failed){setNotice('partial');await reload();return;}
   if(!await persist({...draft.current,completedAt:new Date().toISOString(),position:10}))return;
   setDone(true);await reload();
  });
  const undo=()=>void run(async()=>{for(const source of created){await request('/api/sources',language,'DELETE',{id:source.id});setCreated(old=>old.filter(entry=>entry.id!==source.id));setExisting(old=>old.filter(entry=>entry.id!==source.id));}await reload();});
  const q=state.questions[state.position];
  return createPortal(<div className="preference-backdrop"><section ref={panel} className="preference-dialog" role="dialog" aria-modal="true" aria-labelledby="preference-title" aria-busy={busy||loading}>
-  <header><span className="micro-label">YOURFEED · {state.source==='ai'?m.aiLabel:m.curated}</span><button type="button" data-pref="close" disabled={busy||loading} onClick={close}>{m.close}</button></header>
+  <header><span className="micro-label">YOURFEED · {state.source==='ai'?m.aiLabel:m.curated}</span><LanguageToggle/><button type="button" data-pref="close" disabled={busy||loading} onClick={close}>{m.close}</button></header>
   <h2 id="preference-title" tabIndex={-1} ref={heading}>{done?m.done:manual?m.manual:state.position===10?m.review:m.title}</h2>
   {loading?<p role="status">{m.loading}</p>:<>
    {error&&<div className="error-box" role="alert">{m.error}<button type="button" disabled={busy} onClick={()=>void run(async()=>{await persist(draft.current);})}>{m.retry}</button><button type="button" disabled={busy} onClick={()=>void load()}>{m.reload}</button></div>}
-   {notice&&<p role="status">{notice}</p>}
+   {notice&&<p role="status">{m[notice]}</p>}
    {done?<><p>{m.addedCount}: {created.length}</p><p>{m.undoNote}</p><button type="button" data-pref="undo" disabled={busy||!created.length} onClick={undo}>{m.undo}</button><button type="button" onClick={close} disabled={busy}>{m.close}</button></>:<>
     {manual?<div className="preference-manual"><label htmlFor="preference-interest">{m.manualLabel}</label><textarea id="preference-interest" maxLength={240} value={state.manualInterest} disabled={busy} onChange={e=>update({...state,manualInterest:e.target.value})}/><p>{m.manualHelp}</p><div className="preference-topics">{CARD_TOPICS.map(topic=><label key={topic}><input type="checkbox" disabled={busy} checked={state.manualTopics.includes(topic)} onChange={e=>update({...state,manualTopics:e.target.checked?[...state.manualTopics,topic]:state.manualTopics.filter(t=>t!==topic)})}/>{TOPIC_LABELS[topic][language]}</label>)}</div><button type="button" data-pref="manual-review" disabled={busy} onClick={()=>void run(async()=>{if(await persist({...draft.current,position:10}))setManual(false);})}>{m.manualReview}</button><button type="button" disabled={busy} onClick={()=>void run(async()=>{if(await persist(draft.current)){onClose();onManual();}})}>{m.settings}</button></div>:state.position<10?<>
      <p className="preference-progress" aria-live="polite">{m.progress.replace('{n}',String(state.position+1)).replace('{left}',String(9-state.position))}</p><progress value={state.position} max={10}/>
@@ -92,7 +96,7 @@ function CardFlow({profile,aiConfigured,onProfile,reload,onManual,onClose}:Props
      {state.position===0&&aiConfigured&&<button type="button" data-pref="generate" disabled={busy} onClick={generate}>{generating?m.generating:m.ai}</button>}
     </>:<>
      <p className="preference-progress" aria-live="polite">10 / 10 · {m.review}</p><progress value={10} max={10}/><p>{m.preview}</p><div className="preference-topic-summary" aria-label={m.topics}>{Object.keys(summary.topicWeights).map(topic=><span key={topic}>{TOPIC_LABELS[topic as keyof typeof TOPIC_LABELS][language]} {Math.round(summary.topicWeights[topic as keyof typeof TOPIC_LABELS]!*100)}%</span>)}</div>
-     <div className="preference-source-list">{summary.sources.map(entry=><label key={entry.id}><input type="checkbox" data-pref-source={entry.id} checked={isExisting(entry.locator)||!excluded.includes(entry.id)} disabled={busy||isExisting(entry.locator)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(id=>id!==entry.id):[...old,entry.id])}/><span><strong>{entry.name}</strong> · {entry.language==='zh'?'中文':'English'}{isExisting(entry.locator)&&<em> · {m.added}</em>}<small>{entry.locator}</small></span></label>)}</div>
+     <div className="preference-source-list">{summary.sources.map(entry=><label key={entry.id}><input type="checkbox" data-pref-source={entry.id} checked={isExisting(entry.locator)||!excluded.includes(entry.id)} disabled={busy||isExisting(entry.locator)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(id=>id!==entry.id):[...old,entry.id])}/><span><strong>{entry.localizedName?.[language]??entry.name}</strong> · {m.sourceLanguages[entry.language]}{isExisting(entry.locator)&&<em> · {m.added}</em>}<small className="preference-source-description">{entry.description[language]}</small><small>{entry.locator}</small></span></label>)}</div>
      {!summary.sources.length&&<p>{m.empty}</p>}<button type="button" className="primary-button" data-pref="confirm" disabled={busy||error} onClick={confirm}>{m.confirm}</button>
      <button type="button" data-pref="back" disabled={busy} onClick={()=>void run(async()=>{await persist({...draft.current,position:9});})}>{m.back}</button>
     </>}
