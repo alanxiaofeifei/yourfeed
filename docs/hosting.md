@@ -19,7 +19,7 @@ The executable source and examples live in `hosting/`:
 - Tenant: `AUTH_MODE=standalone`, `HOSTING_MODE=hosted`, unique `INSTANCE_ID`, unique `HOSTED_INSTANCE_TOKEN`, and the `HOSTED_CONTROL_SERVICE` service binding.
 - The tenant DB must have its own matching `meta` marker `hosted:instance`; missing/mismatched policy or marker fails closed. This is not a migration that assigns an existing private DB to a new person.
 
-Do not copy the operator's `OPENAI_API_KEY`, DeepSeek, GLM, Gemini, Groq, NVIDIA, Cerebras, YouTube credentials, `AUTH_SECRET` or encryption master key to tenant instances. Hosted users supply their own provider keys in private settings. Google OAuth and Resend may be shared **login/sending services**, but user sessions and content stay local to each instance. Notebook authorization is separate from Google sign-in.
+Do not copy the operator's `OPENAI_API_KEY`, DeepSeek, GLM, Gemini, Groq, NVIDIA, Cerebras, YouTube credentials, `AUTH_SECRET` or encryption master key to tenant instances. Hosted users supply their own provider keys in private settings. The optional `FREE_AI_GROQ_API_KEY` described below is a separate, explicit free-channel supplement. Google OAuth and Resend may be shared **login/sending services**, but user sessions and content stay local to each instance. Notebook authorization is separate from Google sign-in.
 
 ## Provisioning and invitation sequence
 
@@ -100,3 +100,7 @@ node hosting/scripts/operator.mjs https://YOUR-CONTROL-ORIGIN /private/request.j
 
 
 Expired reservations can be renewed only for the same original mailbox/member/database, subject to capacity checks. The `renew` operation does not reactivate a revoked/active slot or transfer it to a different person. Revoked slots are not recycled by this MVP. The identity-marker helper requires all expected core/derived/auth tables to exist and be empty, apart from its explicitly permitted seed bookkeeping; never apply it to a data-bearing instance.
+
+## Optional operator free-channel account
+
+An operator may explicitly configure a separate Worker Secret `FREE_AI_GROQ_API_KEY` for an authorized instance via `npx wrangler secret put FREE_AI_GROQ_API_KEY`, supplying it through stdin. Never copy a user's `GROQ_API_KEY` or change instance isolation. Free tasks then try Groq gpt-oss-120b → gpt-oss-20b only on a rate limit → OVH → Pollinations; unset means unchanged OVH → Pollinations. Groq sees the same task data as other free endpoints. Requests are billed/limited on the operator's Groq account (free tier), whose quotas are shared across instances using that account; the existing 10/day per-instance cap still counts once per task. As verified by the operator on 2026-11-15, each Groq model has 30 RPM, 1,000 RPD, 8,000 TPM and 200,000 TPD; verify actual account limits before provisioning. This optional supplement does not configure a user's own connection or enable background AI. See [free-channel behavior and privacy](first-use-onboarding.md#default-free-public-ai-issue-d-local-candidate). Instance release/configuration still requires the existing operator approval.

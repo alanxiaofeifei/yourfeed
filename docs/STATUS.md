@@ -1,5 +1,13 @@
 # 当前项目状态
 
+## 本地候选（2026-11-15）：免费公共通道运营者补充
+
+- 任务入口：仓库上一级 `TASK.md`；分支 `feat/free-ai-groq`，基线 `e389059`。可选 `FREE_AI_GROQ_API_KEY`：120b → 仅限流时 20b → OVH → Pollinations；未设置时原请求不变。按模型冷却、剩余额度预冷却、单次最多 4 秒及总计 8 秒，沿用每实例每天 10 次且每任务只计一次。
+- 运营者密钥只用于免费通道内部出站请求，不改变用户自带 Key 判断、自动分析、免费标签或公开 health；既有设置 API 的自带 Key 供应商目录本来含 Groq，完整保持不变。无迁移、新依赖、锁文件或权限/隔离变更。全部网络测试使用合成 mock。
+- `FIX.md` 修复：Groq 使用独立进行中预约，成功后间隔 2 秒；响应头要求的更长冷却保留，OVH/Pollinations 仍维持 30 秒间隔。新增 4 例回归验证连续成功、2 秒边界、剩余请求为零及 OVH 间隔。
+- `FIX2.md` 修复：预冷却只采用对应耗尽额度的 reset；429 保留 Retry-After，无法识别额度时取最长 reset。输入按 UTF-8 字节约每 3 字节一个 token 加 2048 输出估算，超过 8K TPM 的任务直接跳过两种 Groq，不修改冷却；无效的限额成功响应转 OVH，解析有效后才允许后续任务用 20b；duration 支持 us/µs/ns。新增 12 例 mock 回归并修正原 6 例冷却边界。
+- 最终门禁（FIX2 后重跑并覆盖日志）：Node 24.22.1 / npm 11.21.1；单元 1001/1001（70 files，原新增 38 例、FIX 4 例及 FIX2 12 例）、typecheck、Cloudflare build、生产模式 E2E 115 passed / 29 既有跳过、`git diff --check` 全通过。记录与日志在仓库上一级 `DONE.md`、`FIX2_DONE`、`unit.log`、`typecheck.log`、`build.log`、`e2e.log`。仅本地未提交、未推送、未部署，无 GitHub 写入或远程 Wrangler；下一步审阅本地 diff，任何实例发布另行授权。
+
 ## 生产上线（2026-11-15 12:08 UTC+8）：AI 速览 #21 / PR #22
 - Alan 批准的三项决定：只总结「今日必看」3 条；无 Key 可用免费公共通道并计入每天 10 次；只在点击时生成。PR [#22](https://github.com/alanxiaofeifei/yourfeed/pull/22) CI 全绿后 squash-merge 到 `main` `c24ccf558f87f9fbfdcb0f3c93981300bc5e8801`，关闭 [#21](https://github.com/alanxiaofeifei/yourfeed/issues/21)。
 - 无 D1 迁移（缓存用既有 `meta` 表）；两端远程迁移列表仍为 0000–0002。部署前 time-travel 书签：生产 `00000029-00000000-00005124-e765ebaa2613d60f077550f51c890488`，member `0000004a-00000000-00005124-e8a6a3cbd102866eaf8b85baa2c5dd22`（未使用）。未改 secrets、隔离、权限。
