@@ -33,6 +33,36 @@ describe('explicit daily digest, real SQLite and mocked outbound network',()=>{
   expect(input.map((row:any)=>row.id)).toEqual(chosen);expect(input).toHaveLength(3);expect(Object.keys(input[0]).sort()).toEqual(['id','title','sourceName','publishedAt','summary'].sort());expect(JSON.stringify(sent)).not.toMatch(/BODY_MUST_NOT_BE_SENT|example.test|digest-owner/);
   expect(db.prepare("SELECT value FROM meta WHERE key='free-ai:day:2026-11-15'").get()).toEqual({value:'1'});expect(db.prepare('SELECT count(*) n FROM reservations').get()).toEqual({n:0});
  });
+ it('operator supplement keeps settings/health unchanged and free digest/preference API JSON generic',async()=>{
+  const key='synthetic-operator-secret-DO-NOT-EXPOSE';
+  const call=(path:string,method='GET')=>api.handleApi(new Request('https://digest.example.test/api/'+path,{method,headers:{'Content-Type':'application/json','Accept-Language':'en','oai-authenticated-user-id':'owner'},...(method==='POST'?{body:'{}'}:{})}),env);
+  const settings=await (await call('settings')).json(),health=await (await call('health')).json();
+  env.FREE_AI_GROQ_API_KEY=key;
+  const supplementedSettings=await (await call('settings')).json() as any;
+  // The existing own-key provider catalog already contains Groq; it must remain identical.
+  expect(supplementedSettings).toEqual(settings);expect(await (await call('health')).json()).toEqual(health);
+  expect(JSON.stringify(supplementedSettings)).not.toContain(key);
+  expect(JSON.stringify({usingFreeAi:supplementedSettings.usingFreeAi,freeAiAvailable:supplementedSettings.freeAiAvailable,configured:supplementedSettings.configured})).not.toMatch(/groq/i);
+  const generated=await call('briefing/digest','POST');expect(generated.status).toBe(200);
+  const value=await generated.json() as any;expect(value.digest).toMatchObject({channel:'free',provider:'public',model:'Free public channel'});
+  expect(JSON.stringify(value)).not.toMatch(/groq|synthetic-operator-secret/i);
+  expect(await (await call('briefing/digest')).text()).not.toMatch(/groq|synthetic-operator-secret/i);
+  expect(network.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions');
+  vi.setSystemTime(now.getTime()+31000);
+  const {curatedQuestions}=await import('../shared/preference-cards');network.mockImplementation(async()=>response({questions:curatedQuestions('en')}));
+  const cards=await call('preference-cards/generate','POST');expect(cards.status).toBe(200);const questions=await cards.json();
+  expect(questions).toEqual({source:'ai',questions:curatedQuestions('en')});expect(JSON.stringify(questions)).not.toMatch(/groq|synthetic-operator-secret/i);
+  expect(db.prepare("SELECT value FROM meta WHERE key='free-ai:day:2026-11-15'").get()).toEqual({value:'2'});expect(db.prepare('SELECT count(*) n FROM reservations').get()).toEqual({n:0});
+ });
+ it('Groq failure diagnostics and secret stay out of digest/preference API JSON and console output',async()=>{
+  env.FREE_AI_GROQ_API_KEY='synthetic-operator-secret-DO-NOT-EXPOSE';
+  const spies=['log','info','warn','error','debug'].map(method=>vi.spyOn(console,method as 'log').mockImplementation(()=>{}));
+  network.mockImplementation(async()=>new Response(JSON.stringify({error:{message:'Groq '+env.FREE_AI_GROQ_API_KEY+' https://api.groq.com private task reply'}}),{status:429}));
+  const failed=await api.handleApi(request('POST',{}),env);expect(failed.status).toBe(502);expect(await failed.text()).not.toMatch(/groq|synthetic-operator-secret/i);
+  const cards=await api.handleApi(new Request('https://digest.example.test/api/preference-cards/generate',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'owner'},body:'{}'}),env);
+  expect(cards.status).toBe(200);const value=await cards.json() as any;expect(value.source).toBe('curated');expect(JSON.stringify(value)).not.toMatch(/groq|synthetic-operator-secret/i);
+  for(const spy of spies)expect(spy).not.toHaveBeenCalled();
+ });
  it('fresh GET and POST make zero additional calls, with one overwrite row per user',async()=>{await post();network.mockClear();expect(await digest.getDigest(env,'owner','en')).toMatchObject({status:'fresh'});expect((await post()).body.status).toBe('fresh');expect(network).not.toHaveBeenCalled();expect(db.prepare("SELECT count(*) n FROM meta WHERE key LIKE 'digest:v1:%'").get()).toEqual({n:1});});
  it.each(['date','content','ids','bullets','language','profile','channel','model'])('%s change marks stale without generating',async change=>{
   await post();network.mockClear();if(change==='date')vi.setSystemTime(new Date('2026-11-16T04:00:00Z'));

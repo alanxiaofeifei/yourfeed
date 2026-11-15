@@ -8,7 +8,7 @@ import {isHosted} from './hosted';
 import {sourceRecord} from './source-record';
 import {honestContent} from '../shared/content-coverage';
 import { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS, PROVIDER_METADATA } from '../shared/providers';
-export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; GEMINI_API_KEY?:string; GROQ_API_KEY?:string; NVIDIA_API_KEY?:string; CEREBRAS_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
+export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; GEMINI_API_KEY?:string; GROQ_API_KEY?:string; FREE_AI_GROQ_API_KEY?:string; NVIDIA_API_KEY?:string; CEREBRAS_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
 export { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS };
 export const defaultConfig: ProviderConfig = {provider:'openai',model:DEFAULT_MODELS.openai,protocol:'responses',responseFormat:'json_schema',reasoningEffort:'low',maxOutputTokens:2048,timeoutSeconds:25,enabled:false,monthlyBudget:20,dailyLimit:20};
 function profileDefaults(provider:Provider):ProviderConfig {const meta=PROVIDER_METADATA[provider];return {...defaultConfig,provider,model:meta.defaultModel,providerName:provider==='custom'?'自定义兼容接口':meta.name,baseUrl:meta.baseUrl,protocol:meta.protocol,responseFormat:meta.responseFormat,reasoningEffort:meta.reasoningEffort};}
