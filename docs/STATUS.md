@@ -1,5 +1,12 @@
 # 当前项目状态
 
+## 生产上线（2026-11-15 12:08 UTC+8）：AI 速览 #21 / PR #22
+- Alan 批准的三项决定：只总结「今日必看」3 条；无 Key 可用免费公共通道并计入每天 10 次；只在点击时生成。PR [#22](https://github.com/alanxiaofeifei/yourfeed/pull/22) CI 全绿后 squash-merge 到 `main` `c24ccf558f87f9fbfdcb0f3c93981300bc5e8801`，关闭 [#21](https://github.com/alanxiaofeifei/yourfeed/issues/21)。
+- 无 D1 迁移（缓存用既有 `meta` 表）；两端远程迁移列表仍为 0000–0002。部署前 time-travel 书签：生产 `00000029-00000000-00005124-e765ebaa2613d60f077550f51c890488`，member `0000004a-00000000-00005124-e8a6a3cbd102866eaf8b85baa2c5dd22`（未使用）。未改 secrets、隔离、权限。
+- 生产 `yourfeed` 版本 `0db23263-919a-4f73-b8cd-dbf85ef11f07`；回滚 `wrangler rollback 879d3d42-ccdb-4bbd-ab87-c9b77e8bb419 --name yourfeed`。仍无 cron。
+- `yourfeed-member-001` 版本 `ec6501ff-0341-4c6c-87f4-10731ce9e54b`；回滚 `wrangler rollback 121e8747-db1b-4310-b99c-c8a94193b7c6 --name yourfeed-member-001`。cron `*/15 * * * *`、`BACKGROUND_SCHEDULE_CONFIGURED=true`、workers.dev / preview 关闭、自定义域保持。
+- 匿名 smoke（两端通过）：`/api/health` ok/schemaReady；`/login` 200；`/api/feed`、`/api/settings`、`/api/briefing`、`/api/briefing/digest`（GET/POST）401；`/` → `/login`；静态资源含四语「AI 速览 / AI 速覽 / AI recap / Tóm tắt AI」。登录后真实生成未线上验证。
+
 ## Issue #21 · AI 一键速览「今日必看」（2026-11-15，本地验收完成）
 
 - [Issue #21](https://github.com/alanxiaofeifei/yourfeed/issues/21) / [已批准方案](plans/ai-daily-digest.md)，分支 `feat/ai-daily-digest`，基线 `3cb12d0`；执行仓库外 `TASK.md` 与 `FIX_TASK.md`。所有改动未暂存、未提交、未推送、未合并、未部署；无 GitHub 写入或远程 Wrangler，未读取真实密钥或其他工作区私密文件。
