@@ -1,5 +1,19 @@
 # 当前项目状态
 
+## 生产上线（2026-11-15 09:50 UTC+8）：PR #8 已发布
+
+- Alan 在预览验收后明确同意上线（「等你完成后，我确认可以上线了」）。PR #8 已标为 ready，CI Verify YourFeed 全绿后 squash-merge 到 `main`：`d3a9903a3faff0397d060fa4547ef18120a21da2`（2026-11-15 09:45 UTC+8）。包含轻量引导、偏好卡片、不喜欢学习、免 Key 免费 AI 通道、设置 7 项、按用户刷新方式，以及四语（zh-CN / zh-TW / en / vi）随语言切换即时更新的引导与偏好卡片文案。
+- 部署时将 `ONBOARDING_AUTO_OFFER_CUTOFF` 设为实际上线时刻 `2026-11-15T01:48:42Z`（09:48:42 UTC+8）。已有账号不自动弹窗，首页保留常驻「新手引导」按钮；截止时刻之后创建的新账号会自动提供引导。未把预览用的过去 cutoff（2026-11-01）写入生产。
+- 远程只读核对：生产与 member D1 均已应用 `0000_boring_enchantress.sql`、`0001_auth.sql`、`0002_library.sql`，无待执行迁移，因此未做任何 D1 migration。部署前 time-travel 书签：生产 `00000027-00000000-00005124-dee6c350fae0c8c8995741a5a6c89a2f`，member `0000003e-00000000-00005124-7bd299dd92b50c89a2c36200f91993c2`。未改 secrets、数据隔离或访问权限；未动 Financial、AlanFeed、个人门户或 `yourfeed-control`。
+- 生产 `yourfeed`（https://yourfeed.alanzhu.dev）当前版本 `879d3d42-ccdb-4bbd-ab87-c9b77e8bb419`；回滚：`wrangler rollback 9c55d8b3-1c64-4769-a0a1-b34a6556fa26 --name yourfeed`。无 cron（与上线前一致）。`workers_dev` 仍为开启。自定义域 `yourfeed.alanzhu.dev` 仍指向该 Worker。
+- `yourfeed-member-001`（https://yourfeed-m1.alanzhu.dev）当前版本 `121e8747-db1b-4310-b99c-c8a94193b7c6`；回滚：`wrangler rollback 5bcde704-b5bd-4396-9d9f-d44a0c61ea87 --name yourfeed-member-001`。保留 cron `*/15 * * * *`、`BACKGROUND_SCHEDULE_CONFIGURED=true`、托管绑定与变量、`workers_dev=false` / `preview_urls=false`，自定义域 `yourfeed-m1.alanzhu.dev` 仍指向该 Worker。`AUTH_EMAIL_FROM` 仍为 secret，未改写入 vars。
+- 匿名 smoke（生产与 member 均通过）：`/api/health` 200 且 `ok`/`schemaReady`；`/login` 200；引导相关静态资源（含 `page-Dw_vvx8U.js` / `page.ByGxXZv9.css`）200，脚本中含四语文案「前往此处 / 前往此處 / Go here / Đi tới đây」；`/api/feed`、`/api/settings`、`/api/profile` 仍 401；`/api/session` 为未登录；匿名访问 `/` 仍转到 `/login`。代码回滚不会撤销数据库迁移（本次也没有迁移）。
+- 两端健康后，按 [PREVIEW 说明](../preview/PREVIEW.md) 执行 guarded teardown：`ALLOW_PREVIEW_REMOTE=yourfeed-onboarding-preview CONFIRM_PREVIEW_TEARDOWN=yourfeed-onboarding-preview bash RUNBOOK.sh teardown`。已删除预览 Worker `yourfeed-onboarding-preview` 及其 D1 `27708692-e1d9-4500-af4e-6dafa0e51143`（Alan 的预览账号随 D1 一并消失，符合预期）。本地预览 env / `.private` 文件未自动删除。生产与 member Worker、D1、自定义域在 teardown 后仍在，health 仍为 200。
+- Issues [#11](https://github.com/alanxiaofeifei/yourfeed/issues/11)–[#16](https://github.com/alanxiaofeifei/yourfeed/issues/16) 的工作已随 PR #8 上线，将在本状态更新合并后关闭。
+
+以下各节为上线前的检查点记录，其中预览 Worker 版本、未合并/未部署的表述及旧的生产/member 版本号已被本节取代。
+
+
 
 ## PR #8 就绪状态（2026-11-15 05:25 UTC+8）
 - 预览 `yourfeed-onboarding-preview` 版本 `1250d034` 含 A（轻量引导+箭头）、B #12（偏好卡片）、C #13（不喜欢+学习排序）、D #14（免 Key 免费 AI 通道）、E #15（设置 7 项+账户去重）、F #16（刷新方式）。相对 main 无数据库迁移、未改 `wrangler.jsonc`；CI verify 通过；PR 仍为 Draft。
