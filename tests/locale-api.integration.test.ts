@@ -76,7 +76,7 @@ describe('portable four-language API behavior',()=>{
     try{
       const response=await handleApi(request('/api/profile/advice',{method:'POST',body:{profile:edited,language:'vi'}}),env);
       expect(response.status).toBe(200);expect(await response.json()).toMatchObject({needsConfiguration:true});expect(await getProfile(env)).toEqual(before);
-      expect(await env.DB.prepare('SELECT COUNT(*) n FROM settings').first('n')).toBe(0);expect(await env.DB.prepare('SELECT COUNT(*) n FROM reservations').first('n')).toBe(0);expect(network).not.toHaveBeenCalled();
+      expect(await env.DB.prepare('SELECT COUNT(*) n FROM settings').first('n')).toBe(0);expect(await env.DB.prepare('SELECT COUNT(*) n FROM reservations').first('n')).toBe(0);expect(network).toHaveBeenCalledTimes(2);
     }finally{network.mockRestore();}
   });
   it('rejects accidentally pasted credentials before any profile-advice provider call',async()=>{

@@ -176,7 +176,7 @@ async function sourceStatus(env:Env,source:Source,patch:Record<string,unknown>):
  const result=await env.DB.prepare("UPDATE sources SET json=json_patch(json,?) WHERE id=? AND json_extract(json,'$.locator')=? AND json_extract(json,'$.platform')=? AND json_extract(json,'$.enabled')=1 AND COALESCE(json_extract(json,'$.blocked'),0)=0").bind(JSON.stringify(patch),source.id,source.locator,source.platform).run();
  return result.meta.changes===1;
 }
-export async function syncSources(env:Env,opts:{force?:boolean;limit?:number}={}):Promise<{processed:number;pending:number;results:{id:string;name:string;ok:boolean;count:number;error?:string}[];lastUpdated:string}>{
+export async function syncSources(env:Env,opts:{force?:boolean;limit?:number;intervalHours?:number}={}):Promise<{processed:number;pending:number;results:{id:string;name:string;ok:boolean;count:number;error?:string}[];lastUpdated:string}>{
  const all=await listSources(env);const now=Date.now();
  const eligible=all.filter((s:any)=>s.enabled&&!s.blocked&&['rss','github','youtube','bilibili'].includes(s.platform)&&(!s.nextRetryAt||Date.parse(s.nextRetryAt)<=now));
  const byId=new Map(eligible.map(s=>[s.id,s]));
@@ -188,7 +188,7 @@ export async function syncSources(env:Env,opts:{force?:boolean;limit?:number}={}
   if(!queue.length){
    const lastRound=Number(await getState(env,'sync-round-started')||'0');
    if(now-lastRound<300000)return {processed:0,pending:0,results:[],lastUpdated:lastSuccess};
-   const due=eligible.filter(s=>opts.force||s.pendingEntries||!s.lastSuccess||now-Date.parse(s.lastSuccess)>6*3600_000);
+   const due=eligible.filter(s=>opts.force||s.pendingEntries||!s.lastSuccess||now-Date.parse(s.lastSuccess)>=(opts.intervalHours||6)*3600_000);
    due.sort((a:any,b:any)=>Number(a.lastAttempt||0)-Number(b.lastAttempt||0));
    queue=due.map(s=>s.id);await setState(env,'sync-round-started',String(now));
   }

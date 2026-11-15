@@ -139,8 +139,8 @@ export const PROVIDER_METADATA: Record<Provider, ProviderMeta> = {
     models: ['deepseek-ai/deepseek-v4-flash', 'nvidia/nemotron-3-super-120b-a12b', 'openai/gpt-oss-120b', 'z-ai/glm-5.3'],
     keyUrl: 'https://build.nvidia.com',
     freeTier: {
-      zh: '加入 NVIDIA Developer Program 后可免费用于开发测试，有速率限制。在模型页点「Get API Key」获取。',
-      en: 'Free for development with the NVIDIA Developer Program, rate limited. Use "Get API Key" on a model page.',
+      zh: '加入 NVIDIA Developer Program 后可免费用于开发测试，无需支付方式，有额度与速率限制。在模型页点「Get API Key」获取。',
+      en: 'Free development access with the NVIDIA Developer Program; no payment method required, with quota and rate limits. Use "Get API Key" on a model page.',
     },
     responseFormat: 'none',
     modelHelp: {
@@ -157,14 +157,10 @@ export const PROVIDER_METADATA: Record<Provider, ProviderMeta> = {
     model: 'gpt-oss-120b',
     models: ['gpt-oss-120b', 'qwen-3.8-27b'],
     keyUrl: 'https://cloud.cerebras.ai',
-    freeTier: {
-      zh: '免费试用约 5 次/分钟、每天 100 万 tokens（以控制台为准）。',
-      en: 'Free trial is about 5 requests/min and 1M tokens/day (see console).',
-    },
     responseFormat: 'json_object',
     modelHelp: {
-      zh: '使用 Cerebras 官方高速推理接口，免费试用提供基础配额。',
-      en: 'Uses Cerebras official high-speed inference endpoint with free trial quota.',
+      zh: '使用 Cerebras 官方高速推理接口；试用资格与计费以当前账户为准。',
+      en: 'Uses the official Cerebras inference endpoint; trial eligibility and billing depend on your current account.',
     },
   },
   custom: {

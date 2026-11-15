@@ -2,10 +2,11 @@ import type {ContentItem,Feedback,Kind} from '../shared/types';
 import {type Env,getContentById,listSources} from './db';
 import {getProfile} from './profile';
 import {HttpError} from './security';
+import {sourceRecord} from './source-record';
 import {honestContent} from '../shared/content-coverage';
 
 export {getContentById};
-type Filter='all'|'liked'|'saved'|'read';
+type Filter='all'|'liked'|'saved'|'read'|'disliked';
 export interface LibraryOptions {userId:string;filter?:Filter;q?:string;type?:Kind|'all';cursor?:string;limit?:number;asOf?:string;}
 interface Cursor {time:string;id:string;asOf:string;scope:string;}
 function encodeCursor(cursor:Cursor):string {return btoa(unescape(encodeURIComponent(JSON.stringify(cursor))));}
@@ -16,7 +17,7 @@ function like(value:string):string {return '%'+value.replace(/[\\%_]/g,'\\$&')+'
  * and absent search-index rows remain reachable during an interrupted backfill. */
 export async function queryLibrary(env:Env,options:LibraryOptions) {
   const filter=options.filter||'all',kind=options.type||'all',q=(options.q||'').trim();
-  if(!['all','liked','saved','read'].includes(filter)||!['all','video','article','news','post','project'].includes(kind)||q.length>200)throw new HttpError(400,'内容筛选条件无效。');
+  if(!['all','liked','saved','read','disliked'].includes(filter)||!['all','video','article','news','post','project'].includes(kind)||q.length>200)throw new HttpError(400,'内容筛选条件无效。');
   const limit=Math.min(100,Math.max(1,Math.floor(options.limit||20))),scope=JSON.stringify([filter,kind,q]);
   const cursor=options.cursor?decodeCursor(options.cursor):undefined;
   if(cursor&&cursor.scope!==scope)throw new HttpError(400,'筛选条件已改变，请从第一页开始。');
@@ -24,7 +25,8 @@ export async function queryLibrary(env:Env,options:LibraryOptions) {
   if(!Number.isFinite(Date.parse(asOf))||Date.parse(asOf)>Date.now()+60000)throw new HttpError(400,'内容分页时间无效。');
   const clauses=['c.updated_at<=?'];const values:unknown[]=[asOf];
   if(kind!=='all'){clauses.push('c.kind=?');values.push(kind);}
-  if(filter!=='all'){clauses.push(`json_extract(f.json,'$.${filter}')=1`);}
+  if(filter==='disliked')clauses.push("(json_extract(f.json,'$.disliked')=1 OR json_extract(f.json,'$.dismissed')=1)");
+  else if(filter!=='all'){clauses.push(`json_extract(f.json,'$.${filter}')=1`);}
   const shortQueryLimited=!!q&&Array.from(q).length<3;
   if(q&&shortQueryLimited){
     // Trigram indexes cannot answer one/two-character searches. Bound the scan
@@ -42,7 +44,7 @@ export async function queryLibrary(env:Env,options:LibraryOptions) {
   if(cursor){pageClauses.push('(c.updated_at<? OR (c.updated_at=? AND c.id<?))');pageValues.push(cursor.time,cursor.time,cursor.id);}
   const result=await env.DB.prepare('SELECT c.id,c.json,c.updated_at,f.json feedback'+join+' WHERE '+pageClauses.join(' AND ')+' ORDER BY c.updated_at DESC,c.id DESC LIMIT ?').bind(options.userId,...pageValues,limit+1).all<{id:string;json:string;updated_at:string;feedback:string|null}>();
   const hasMore=result.results.length>limit,rows=result.results.slice(0,limit);
-  const items=rows.map(row=>honestContent({...JSON.parse(row.json),...(row.feedback?JSON.parse(row.feedback):{})}) as ContentItem);
+  const items=rows.map(row=>honestContent({...sourceRecord(JSON.parse(row.json)),...(row.feedback?JSON.parse(row.feedback):{})}) as ContentItem);
   if(items.length){
     const provenance=await env.DB.prepare('SELECT content_id,name,url FROM content_sources WHERE content_id IN ('+items.map(()=>'?').join(',')+') ORDER BY first_seen_at,source_id').bind(...items.map(item=>item.id)).all<{content_id:string;name:string;url:string}>();
     for(const item of items){const found=provenance.results.filter(row=>row.content_id===item.id);item.relatedSources=[...new Map([...(item.relatedSources||[]),...found.map(({name,url})=>({name,url}))].map(value=>[value.name+'\n'+value.url,value])).values()];}
@@ -63,6 +65,6 @@ export async function rebuildSearchIndex(env:Env,limit=25) {
 export async function exportLibraryPage(env:Env,userId:string,{cursor,limit=50,filter='all',q,type}:{cursor?:string;limit?:number;filter?:Filter;q?:string;type?:Kind|'all'}={}) {
   const page=await queryLibrary(env,{userId,cursor,limit,filter,q,type});
   const feedback:Record<string,Feedback>={};
-  for(const item of page.items){const value:Feedback={};for(const key of ['liked','saved','read','dismissed'] as const)if(typeof item[key]==='boolean')value[key]=item[key];if(Object.keys(value).length)feedback[item.id]=value;}
-  return {format:'yourfeed-archive' as const,version:1,exportedAt:new Date().toISOString(),items:page.items,feedback,...(!cursor?{sources:await listSources(env),profile:await getProfile(env)}:{}),nextCursor:page.nextCursor};
+  for(const item of page.items){const value:Feedback={};for(const key of ['liked','saved','read','dismissed','disliked'] as const)if(typeof item[key]==='boolean')value[key]=item[key];if(item.updatedAt&&Number.isFinite(Date.parse(item.updatedAt)))value.updatedAt=item.updatedAt;if(Object.keys(value).length)feedback[item.id]=value;}
+  return {format:'yourfeed-archive' as const,version:1 as const,exportedAt:new Date().toISOString(),items:page.items,feedback,...(!cursor?{sources:await listSources(env),profile:await getProfile(env)}:{}),nextCursor:page.nextCursor};
 }

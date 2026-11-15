@@ -19,6 +19,8 @@ import {schemaHealth} from './health';
 import {retentionStatus,saveRetentionPolicy,cleanupRetention} from './retention';
 import {readLibraryArchiveBody,restoreLibrary} from './library-restore';
 import {reserveManualImport} from './hosted-limits';
+import {getOnboarding,mutateOnboarding} from './onboarding';
+import {getPreferenceCards,savePreferenceCards,generatePreferenceCards} from './preference-cards';
 const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const kinds=new Set(['all','video','article','news','post','project']);
 export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Response> {
@@ -33,10 +35,15 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(!env.DB)throw new HttpError(503,'内容库尚未连接，请稍后再试。');
     if(!['GET','HEAD'].includes(request.method))checkWriteRequest(request);
     await initialize(env);
+    if(path==='/api/onboarding'&&request.method==='GET')return response(await getOnboarding(env,userId));
+    if(path==='/api/onboarding'&&request.method==='PATCH')return response(await mutateOnboarding(env,userId,await readJson(request)));
     if(path.startsWith('/api/notebook/')){
       const {handleNotebookApi}=await import('./notebook');
       return await handleNotebookApi(request,env,userId);
     }
+    if(path==='/api/preference-cards'&&request.method==='GET')return response(await getPreferenceCards(env,userId,localeFromTag(request.headers.get('accept-language')||'en')));
+    if(path==='/api/preference-cards'&&request.method==='PUT')return response(await savePreferenceCards(env,userId,await readJson(request)));
+    if(path==='/api/preference-cards/generate'&&request.method==='POST')return response(await generatePreferenceCards(env,localeFromTag(request.headers.get('accept-language')||'en')));
     if(path==='/api/profile'&&request.method==='GET')return response(await getProfile(env));
     if(path==='/api/profile'&&request.method==='PUT')return response(await saveProfile(env,await readJson(request)));
     if(path==='/api/profile/advice'&&request.method==='POST'){
@@ -48,7 +55,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/deployment/check'&&request.method==='POST')return response(await checkDeployment(env,request));
     const url=new URL(request.url);
     const presentationProfile=async()=>{const profile=await getProfile(env);const locale=request.headers.get('accept-language');return locale?{...profile,language:localeFromTag(locale)}:profile;};
-    if(path==='/api/library'&&request.method==='GET')return response(await queryLibrary(env,{userId,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read',q:url.searchParams.get('q')||'',type:(url.searchParams.get('type')||'all') as Kind|'all',cursor:url.searchParams.get('cursor')||undefined,limit:20}));
+    if(path==='/api/library'&&request.method==='GET')return response(await queryLibrary(env,{userId,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read'|'disliked',q:url.searchParams.get('q')||'',type:(url.searchParams.get('type')||'all') as Kind|'all',cursor:url.searchParams.get('cursor')||undefined,limit:20}));
     if(path==='/api/content'&&request.method==='GET'){const item=await getContentById(env,url.searchParams.get('id')||'');if(!item)throw new HttpError(404,'内容不存在。');const feedback=await readFeedback(env,userId);return response({...item,...feedback[item.id]});}
     if((path==='/api/archive'||path==='/api/export')&&request.method==='GET')return response(await exportLibraryPage(env,userId,{cursor:url.searchParams.get('cursor')||undefined,limit:50,filter:(url.searchParams.get('filter')||'all') as 'all'|'liked'|'saved'|'read'}));
     if(path==='/api/archive/import/preview'&&request.method==='POST')return response(await restoreLibrary(env,userId,await readLibraryArchiveBody(request),false));
@@ -80,7 +87,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     }
     if(path==='/api/feedback'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.id!=='string'||!body.patch||typeof body.patch!=='object')throw new HttpError(400,'反馈内容不完整。');
-      const patch:Feedback={};for(const key of ['liked','saved','read','dismissed'] as const){const value=(body.patch as Record<string,unknown>)[key];if(typeof value==='boolean')patch[key]=value;}
+      const patch:Feedback={};for(const key of ['liked','saved','read','dismissed','disliked'] as const){const value=(body.patch as Record<string,unknown>)[key];if(typeof value==='boolean')patch[key]=value;}
       if(!(await env.DB.prepare('SELECT id FROM content WHERE id=?').bind(body.id).first()))throw new HttpError(404,'这条内容不存在。');
       return response({ok:true,feedback:await saveFeedback(env,userId,body.id,patch)});
     }
@@ -97,11 +104,12 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     if(path==='/api/sources'&&request.method==='PATCH')return response({ok:true,source:await updateSourceInput(env,await readJson(request))});
     if(path==='/api/sources'&&request.method==='DELETE'){const body=await readJson(request);if(typeof body.id!=='string')throw new HttpError(400,'Source ID is required.');await deleteSource(env,body.id);return response({ok:true});}
     if(path==='/api/settings'&&request.method==='GET')return response(await publicConfig(env));
-    if(path==='/api/settings'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveConfig(env,await readJson(request)));}
+    if(path==='/api/settings'&&request.method==='PUT'){await requireRecentAuth(request,env);return response(await saveConfig(env,await readJson(request),{userId,origin:new URL(request.url).origin}));}
     if(path==='/api/usage'&&request.method==='GET')return response(await getUsage(env));
     if(path==='/api/sync'&&request.method==='POST'){
       const body=await readJson(request);const {syncSources}=await import('./ingest');
-      return response(await syncSources(env,{force:body.force===true,limit:Math.min(5,Math.max(1,Number(body.limit)||3))}));
+      const {backgroundStatus}=await import('./background');const policy=await backgroundStatus(env);
+      return response(await syncSources(env,{intervalHours:policy.intervalHours,force:body.force===true,limit:Math.min(5,Math.max(1,Number(body.limit)||3))}));
     }
     if(path==='/api/import'&&request.method==='POST'){
       const body=await readJson(request);if(typeof body.url!=='string')throw new HttpError(400,'请填写文章、帖子或视频链接。');
@@ -110,7 +118,7 @@ export async function handleApi(request:Request,env:Env,ctx?:unknown):Promise<Re
     }
     if(path==='/api/test-provider'&&request.method==='POST'){
       await requireRecentAuth(request,env);
-      const body=await readJson(request);const overrides:Partial<import('../shared/types').ProviderConfig>={};if(body.provider!==undefined)overrides.provider=providerName(body.provider);for(const field of ['model','key','providerName','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion'] as const){if(body[field]!==undefined)(overrides as Record<string,unknown>)[field]=body[field];}const {testProvider}=await import('./ai');return response(await testProvider(env,overrides));
+      const body=await readJson(request);const overrides:Partial<import('../shared/types').ProviderConfig>={};if(body.provider!==undefined)overrides.provider=providerName(body.provider);for(const field of ['model','key','providerName','baseUrl','protocol','temperature','maxOutputTokens','timeoutSeconds','responseFormat','reasoningEffort','inputPricePerMillion','outputPricePerMillion'] as const){if(body[field]!==undefined)(overrides as Record<string,unknown>)[field]=body[field];}const {testProvider}=await import('./ai');return response(await testProvider(env,overrides,{userId,origin:new URL(request.url).origin}));
     }
     if(path==='/api/analyze'&&request.method==='POST'){
       const body=await readJson(request);const {analyzeItem,analyzePending}=await import('./ai');

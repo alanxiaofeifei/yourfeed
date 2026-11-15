@@ -5,6 +5,7 @@ import { validateProviderBaseUrl } from './provider-endpoint';
 import { getProfile } from './profile';
 import { profileDate } from '../shared/profile';
 import {isHosted} from './hosted';
+import {sourceRecord} from './source-record';
 import {honestContent} from '../shared/content-coverage';
 import { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS, PROVIDER_METADATA } from '../shared/providers';
 export interface Env { DB:D1Database; APP_ENCRYPTION_KEY?:string; OPENAI_API_KEY?:string; DEEPSEEK_API_KEY?:string; GLM_API_KEY?:string; ZHIPUAI_API_KEY?:string; GEMINI_API_KEY?:string; GROQ_API_KEY?:string; NVIDIA_API_KEY?:string; CEREBRAS_API_KEY?:string; YOUTUBE_API_KEY?:string; [key:string]:unknown; }
@@ -20,11 +21,11 @@ export async function initialize(env:Env):Promise<void> {
   await setState(env,'seeded-v1',new Date().toISOString());
 }
 /** Recommendation candidates only. Library/history use keyset SQL in library.ts. */
-export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC,id DESC LIMIT 1000').all<{json:string}>();return r.results.map(r=>honestContent(JSON.parse(r.json))); }
+export async function listContent(env:Env):Promise<ContentItem[]> { const r=await env.DB.prepare('SELECT json FROM content ORDER BY updated_at DESC,id DESC LIMIT 1000').all<{json:string}>();return r.results.map(r=>honestContent(sourceRecord(JSON.parse(r.json)))); }
 export async function getContentById(env:Env,id:string):Promise<ContentItem|null> {
   if(!id||id.length>200)return null;
   const row=await env.DB.prepare('SELECT json FROM content WHERE id=? OR id=(SELECT content_id FROM content_aliases WHERE alias=?) ORDER BY (id=?) DESC LIMIT 1').bind(id,id,id).first<{json:string}>();
-  return row?honestContent(JSON.parse(row.json)):null;
+  return row?honestContent(sourceRecord(JSON.parse(row.json))):null;
 }
 export async function databaseStorage(env:Env) {
   // D1 disallows page_count/page_size PRAGMAs. Its documented result metadata
@@ -53,9 +54,9 @@ export async function upsertContent(env:Env,items:ContentItem[]):Promise<void> {
   for(let i=0;i<items.length;i+=5){
     const statements=[];
     for(const item of items.slice(i,i+5)){
-      const now=new Date().toISOString(),json=JSON.stringify(item);
+      const now=new Date().toISOString(),json=JSON.stringify(sourceRecord(item));
       statements.push(env.DB.prepare("INSERT OR IGNORE INTO content_sources(content_id,source_id,name,url,first_seen_at,last_seen_at) SELECT id,source_id,COALESCE(json_extract(json,'$.sourceName'),source_id),url,updated_at,updated_at FROM content WHERE id=?").bind(item.id));
-      statements.push(env.DB.prepare("INSERT INTO content(id,source_id,kind,url,json,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,url=excluded.url,json=json_set(CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN json_patch(content.json,excluded.json) ELSE excluded.json END,'$.sourceId',content.source_id,'$.sourceName',COALESCE(json_extract(content.json,'$.sourceName'),json_extract(excluded.json,'$.sourceName')),'$.publishedAt',CASE WHEN json_extract(excluded.json,'$.dateSource')='missing' THEN json_extract(content.json,'$.publishedAt') ELSE json_extract(excluded.json,'$.publishedAt') END),updated_at=CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN content.updated_at ELSE excluded.updated_at END").bind(item.id,item.sourceId,item.kind,item.url,json,now));
+      statements.push(env.DB.prepare("INSERT INTO content(id,source_id,kind,url,json,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,url=excluded.url,json=json_set(json_remove(CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN json_patch(content.json,excluded.json) ELSE excluded.json END,'$.liked','$.saved','$.read','$.dismissed','$.disliked','$.updatedAt','$.reason'),'$.sourceId',content.source_id,'$.sourceName',COALESCE(json_extract(content.json,'$.sourceName'),json_extract(excluded.json,'$.sourceName')),'$.publishedAt',CASE WHEN json_extract(excluded.json,'$.dateSource')='missing' THEN json_extract(content.json,'$.publishedAt') ELSE json_extract(excluded.json,'$.publishedAt') END),updated_at=CASE WHEN json_extract(content.json,'$.title') IS json_extract(excluded.json,'$.title') AND json_extract(content.json,'$.summary') IS json_extract(excluded.json,'$.summary') AND json_extract(content.json,'$.body') IS json_extract(excluded.json,'$.body') THEN content.updated_at ELSE excluded.updated_at END").bind(item.id,item.sourceId,item.kind,item.url,json,now));
       statements.push(env.DB.prepare("INSERT INTO content_sources(content_id,source_id,name,url,first_seen_at,last_seen_at) VALUES (?,?,?,?,?,?) ON CONFLICT(content_id,source_id) DO UPDATE SET name=excluded.name,url=excluded.url,last_seen_at=excluded.last_seen_at").bind(item.id,item.sourceId,item.sourceName,item.url,now,now));
       statements.push(env.DB.prepare("UPDATE content SET json=json_set(json,'$.relatedSources',json((SELECT json_group_array(json_object('name',name,'url',url)) FROM (SELECT name,url FROM content_sources WHERE content_id=? ORDER BY first_seen_at,source_id)))) WHERE id=?").bind(item.id,item.id));
       const indexedText="COALESCE(json_extract(c.json,'$.title'),'')||char(10)||COALESCE(json_extract(c.json,'$.summary'),'')||char(10)||COALESCE(json_extract(c.json,'$.body'),'')||char(10)||COALESCE(json_extract(c.json,'$.sourceName'),'')||char(10)||COALESCE(json_extract(c.json,'$.analysis'),'')";
@@ -67,13 +68,26 @@ export async function upsertContent(env:Env,items:ContentItem[]):Promise<void> {
 export async function listSources(env:Env):Promise<Source[]> {const r=await env.DB.prepare('SELECT json FROM sources').all<{json:string}>();return r.results.map(r=>JSON.parse(r.json));}
 export async function updateSource(env:Env,source:Source):Promise<void> {await env.DB.prepare('INSERT INTO sources(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind(source.id,JSON.stringify(source)).run();}
 export async function readFeedback(env:Env,userId:string):Promise<Record<string,Feedback>> {const r=await env.DB.prepare('SELECT item_id,json FROM feedback WHERE user_id=?').bind(userId).all<{item_id:string,json:string}>();return Object.fromEntries(r.results.map(r=>[r.item_id,JSON.parse(r.json)]));}
-export async function saveFeedback(env:Env,userId:string,itemId:string,patch:Feedback):Promise<Feedback> {const old=await env.DB.prepare('SELECT json FROM feedback WHERE user_id=? AND item_id=?').bind(userId,itemId).first<{json:string}>();const value={...(old?JSON.parse(old.json):{}),...patch};await env.DB.prepare('INSERT INTO feedback(user_id,item_id,json) VALUES (?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET json=excluded.json').bind(userId,itemId,JSON.stringify(value)).run();return value;}
+export async function saveFeedback(env:Env,userId:string,itemId:string,patch:Feedback,options:{restoredAt?:string}={}):Promise<Feedback> {
+  const flags:Feedback={};
+  for(const key of ['liked','saved','read','dismissed','disliked'] as const)if(typeof patch[key]==='boolean')flags[key]=patch[key];
+  // Normalize both legacy and new clients, including Undo, at the persistence boundary.
+  if(flags.disliked!==undefined)flags.dismissed=flags.disliked;
+  else if(flags.dismissed!==undefined)flags.disliked=flags.dismissed;
+  if(!Object.keys(flags).length)return (await readFeedback(env,userId))[itemId]||{};
+  flags.updatedAt=options.restoredAt&&Number.isFinite(Date.parse(options.restoredAt))?options.restoredAt:new Date().toISOString();
+  // JSON merge inside the upsert preserves concurrent changes to unrelated flags.
+  await env.DB.prepare("INSERT INTO feedback(user_id,item_id,json) VALUES (?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET json=json_patch(feedback.json,excluded.json)").bind(userId,itemId,JSON.stringify(flags)).run();
+  const row=await env.DB.prepare('SELECT json FROM feedback WHERE user_id=? AND item_id=?').bind(userId,itemId).first<{json:string}>();
+  return JSON.parse(row!.json);
+}
 export async function getConfig(env:Env,forProvider?:Provider):Promise<ProviderConfig> {
   const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('config').first<{json:string}>();
   const active=row?JSON.parse(row.json):defaultConfig;const provider=forProvider??active.provider;
   const stored=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('profile:'+provider).first<{json:string}>();
   const profile=stored?JSON.parse(stored.json):active.provider===provider?active:{};
-  return {...profileDefaults(provider),...profile,provider,monthlyBudget:active.monthlyBudget??20,dailyLimit:active.dailyLimit??20};
+  const {configRevision:_internalRevision,...publicProfile}=profile;
+  return {...profileDefaults(provider),...publicProfile,provider,aiChannel:active.aiChannel,monthlyBudget:active.monthlyBudget??20,dailyLimit:active.dailyLimit??20};
 }
 export async function getSecret(env:Env,id:string):Promise<string|undefined> {
   const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('key:'+id).first<{json:string}>();
@@ -93,19 +107,26 @@ export async function publicConfig(env:Env) {
   const config=await getConfig(env);const status=await secretStatus(env,config.provider);const youtube=await secretStatus(env,'youtube');
   const providers=await Promise.all(PROVIDERS.map(async provider=>({provider,...await secretStatus(env,provider)})));
   const profiles=Object.fromEntries(await Promise.all(PROVIDERS.map(async provider=>[provider,{...await getConfig(env,provider),...await secretStatus(env,provider)}])));
-  return {...config,...status,youtubeConfigured:youtube.configured,youtubeKeyLast4:youtube.keyLast4,providers,profiles};
+  return {...config,...status,freeAiAvailable:true,usingFreeAi:config.aiChannel==='free'||!status.configured,youtubeConfigured:youtube.configured,youtubeKeyLast4:youtube.keyLast4,providers,profiles};
 }
-async function secretStatement(env:Env,id:string,value:string,boundBaseUrl?:string) {
+async function secretStatement(env:Env,id:string,value:string,boundBaseUrl?:string,credentialRevision=crypto.randomUUID()) {
   if(value.length<8||value.length>1024||/[\r\n]/.test(value))throw new HttpError(400,'密钥格式不正确。');
   const cipher=await encryptSecret(value,env.APP_ENCRYPTION_KEY,(typeof env.SECRET_NAMESPACE==='string'?env.SECRET_NAMESPACE:'yourfeed')+':'+id);
-  return env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('key:'+id,JSON.stringify({cipher,last4:value.slice(-4),...(boundBaseUrl?{boundBaseUrl}:{})}));
+  return env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('key:'+id,JSON.stringify({cipher,last4:value.slice(-4),credentialRevision,...(boundBaseUrl?{boundBaseUrl}:{})}));
 }
 function optionalNumber(input:Record<string,unknown>,name:string,old:number|undefined,min:number,max:number,integer=false):number|undefined {
   if(input[name]===null||input[name]==='')return undefined;
   if(input[name]===undefined)return old;
   const value=Number(input[name]);if(!Number.isFinite(value)||value<min||value>max||(integer&&!Number.isInteger(value)))throw new HttpError(400,'高级参数 '+name+' 超出允许范围。');return value;
 }
-export async function saveConfig(env:Env,input:Record<string,unknown>) {
+export async function saveConfig(env:Env,input:Record<string,unknown>,receiptIdentity?:import('./onboarding').TestReceiptIdentity) {
+  if(input.restoreDefaultAi===true){
+    const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('config').first<{json:string}>();
+    const config={...(row?JSON.parse(row.json):defaultConfig),aiChannel:'free',configRevision:crypto.randomUUID()};
+    await env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('config',JSON.stringify(config)).run();
+    return publicConfig(env);
+  }
+  if(input.aiChannel!==undefined&&!['free','own'].includes(String(input.aiChannel)))throw new HttpError(400,'Invalid AI channel.');
   const active=await getConfig(env);const provider=input.provider===undefined?active.provider:providerName(input.provider);const old=await getConfig(env,provider);
   const model=typeof input.model==='string'?input.model.trim():old.model;
   if(!model||model.length>120||/[\u0000-\u001f\u007f]/.test(model))throw new HttpError(400,'请填写有效的模型名称。');
@@ -128,14 +149,43 @@ export async function saveConfig(env:Env,input:Record<string,unknown>) {
   if(provider==='custom'&&enabled&&(inputPricePerMillion===undefined||outputPricePerMillion===undefined))throw new HttpError(400,'启用自定义模型前，请填写输入与输出的每百万 token 价格。');
   const key=typeof input.key==='string'?input.key.trim():'';const existing=await secretStatus(env,provider);
   if(provider==='custom'&&existing.configured&&baseUrl!==old.baseUrl&&!key&&input.clearKey!==true)throw new HttpError(400,'自定义地址已变化，请输入用于新地址的密钥后再保存。');
-  const config:ProviderConfig={provider,model,baseUrl,protocol:protocol as ProviderConfig['protocol'],responseFormat:responseFormat as ProviderConfig['responseFormat'],reasoningEffort:reasoning,providerName:typeof input.providerName==='string'?input.providerName.replace(/[\u0000-\u001f]/g,'').trim().slice(0,80):old.providerName,temperature:optionalNumber(input,'temperature',old.temperature,0,2),maxOutputTokens:optionalNumber(input,'maxOutputTokens',old.maxOutputTokens,128,32768,true)??2048,timeoutSeconds:optionalNumber(input,'timeoutSeconds',old.timeoutSeconds,5,120,true)??25,inputPricePerMillion,outputPricePerMillion,monthlyBudget,dailyLimit,enabled};
+  const config:ProviderConfig={aiChannel:input.aiChannel===undefined?active.aiChannel:input.aiChannel as ProviderConfig['aiChannel'],provider,model,baseUrl,protocol:protocol as ProviderConfig['protocol'],responseFormat:responseFormat as ProviderConfig['responseFormat'],reasoningEffort:reasoning,providerName:typeof input.providerName==='string'?input.providerName.replace(/[\u0000-\u001f]/g,'').trim().slice(0,80):old.providerName,temperature:optionalNumber(input,'temperature',old.temperature,0,2),maxOutputTokens:optionalNumber(input,'maxOutputTokens',old.maxOutputTokens,128,32768,true)??2048,timeoutSeconds:optionalNumber(input,'timeoutSeconds',old.timeoutSeconds,5,120,true)??25,inputPricePerMillion,outputPricePerMillion,monthlyBudget,dailyLimit,enabled};
+  const configRevision=crypto.randomUUID(),newKeyRevision=crypto.randomUUID();
+  let proofStatement:ReturnType<Env['DB']['prepare']>|undefined,legacyKeyUpgrade:ReturnType<Env['DB']['prepare']>|undefined;
+  if(receiptIdentity&&input.testReceipt!==undefined&&input.clearKey!==true)try {
+    const {verifyTestReceipt,testReceiptStorageKey}=await import('./onboarding');
+    // Cipher and random revision MUST come from one snapshot. If another tab
+    // rotates later, this old revision cannot validate proof for the new key.
+    const row=await env.DB.prepare('SELECT json FROM settings WHERE id=?').bind('key:'+provider).first<{json:string}>();
+    const stored=row?JSON.parse(row.json):undefined;
+    const upgradeLegacy=!key&&row!==null&&typeof stored?.cipher==='string'&&stored.credentialRevision===undefined;
+    const revision=key||upgradeLegacy?newKeyRevision:stored?.credentialRevision;
+    // Match getSecret's custom endpoint binding before decrypting the snapshot.
+    if(typeof revision==='string'&&(!!key||provider!=='custom'||stored?.boundBaseUrl===config.baseUrl)) {
+      const actualKey=key||await decryptSecret(stored.cipher,env.APP_ENCRYPTION_KEY,(typeof env.SECRET_NAMESPACE==='string'?env.SECRET_NAMESPACE:'yourfeed')+':'+provider);
+      const proof=await verifyTestReceipt(env,receiptIdentity,config,actualKey,input.testReceipt);
+      if(proof) {
+        proofStatement=env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind(testReceiptStorageKey(env,receiptIdentity.userId),JSON.stringify({...proof,credentialRevision:revision,configRevision}));
+        // Explicit save may upgrade a pre-revision encrypted credential, but
+        // never mutate it at test time or overwrite a concurrent replacement.
+        // A zero-row CAS leaves the proof revision unmatched and fail-closed.
+        if(upgradeLegacy&&row)legacyKeyUpgrade=env.DB.prepare("UPDATE settings SET json=json_set(json,'$.credentialRevision',?) WHERE id=? AND json=?").bind(revision,'key:'+provider,row.json);
+      }
+    }
+  }catch{/* Optional proof cannot prevent a valid product save. */}
   const statements=[];
-  if(key)statements.push(await secretStatement(env,provider,key,provider==='custom'?baseUrl:undefined));
+  if(key)statements.push(await secretStatement(env,provider,key,provider==='custom'?baseUrl:undefined,newKeyRevision));
   if(typeof input.youtubeKey==='string'&&input.youtubeKey.trim())statements.push(await secretStatement(env,'youtube',input.youtubeKey.trim()));
   if(input.clearKey===true)statements.push(env.DB.prepare('DELETE FROM settings WHERE id=?').bind('key:'+provider));
   if(input.clearYoutubeKey===true)statements.push(env.DB.prepare('DELETE FROM settings WHERE id=?').bind('key:youtube'));
-  statements.push(env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('profile:'+provider,JSON.stringify(config)),env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('config',JSON.stringify(config)));
-  await env.DB.batch(statements);return publicConfig(env);
+  const storedConfig=JSON.stringify({...config,configRevision});
+  statements.push(env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('profile:'+provider,storedConfig),env.DB.prepare('INSERT INTO settings(id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json').bind('config',storedConfig));
+  if(proofStatement) {
+    // D1 batch is atomic: a failed proof write rolls back the whole batch. Retry
+    // only the idempotent product writes; never hide failure of that retry.
+    try{await env.DB.batch([...statements,...(legacyKeyUpgrade?[legacyKeyUpgrade]:[]),proofStatement]);}catch{await env.DB.batch(statements);}
+  }else await env.DB.batch(statements);
+  return publicConfig(env);
 }
 export interface Reservation {reservationId:string;day:string;month:string;maxCost:number;dailyLimit:number;monthlyBudget:number;contentId:string;isTest?:boolean;}
 export async function reserveUsage(env:Env,r:Reservation):Promise<boolean> {

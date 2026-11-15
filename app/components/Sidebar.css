@@ -1,0 +1,5 @@
+.sidebar-privacy-note{align-items:flex-start;gap:10px;cursor:default}
+.sidebar-privacy-note>svg{flex:0 0 auto;margin-top:2px;color:var(--muted)}
+.sidebar-privacy-note>div{min-width:0}
+.sidebar-privacy-note>div>strong{font-size:11px;line-height:1.6}
+.sidebar-privacy-note>div>span{display:block;margin-top:5px;font-size:10px;line-height:1.7;white-space:normal;overflow-wrap:anywhere}

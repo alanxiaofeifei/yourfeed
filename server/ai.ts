@@ -1,3 +1,5 @@
+import {runFreeAi} from './free-ai';
+import {freeAiMessages} from '../shared/free-ai-messages';
 import {languageName} from '../shared/language';
 import {honestContent} from '../shared/content-coverage';
 import { z } from 'zod';
@@ -219,9 +221,9 @@ async function settleResult(env: Env, config: ProviderConfig, reservationId: str
 /** One owner-triggered task, using the active provider and the shared spending ledger.
  * Automatic reading need not be enabled. Validation happens before successful settlement;
  * even unusable replies with known usage are charged to the application budget once. */
-export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
-  const config=await getConfig(env);const key=await getProviderKey(env,config.provider);
-  if(!key)return {needsConfiguration:true};
+export async function runBudgetedProfileTask<T>(env:Env,profile:UserProfile,task:ModelTask&{timeoutSeconds?:number;prompt:string;parse:(text:string)=>T}):Promise<{needsConfiguration:true}|{needsConfiguration:false;value:T;model:string;provider:Provider}> {
+  const saved=await getConfig(env);const config={...saved,...(task.timeoutSeconds?{timeoutSeconds:task.timeoutSeconds}:{})};const key=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
+  if(!key){const value=await runFreeAi(env,{...task,prompt:JSON.stringify({required_output_schema:task.schema,untrusted_task_data:task.prompt})});return value===undefined?{needsConfiguration:true}:{needsConfiguration:false,value,model:'Free public channel',provider:'custom'};}
   validateRuntimeConfig(config);
   if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(task.instructions+'\n'+task.prompt)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -304,23 +306,27 @@ export async function assistSourceImport(env:Env,text:string,candidates:readonly
   if(!Array.isArray(candidates)||candidates.length>100)throw new HttpError(400,'每次最多预览 100 个来源，请分批导入。');
   assertSafeAiInput(text);for(const candidate of candidates)assertSafeAiInput(candidate.name+'\n'+candidate.locator);
   const original:ImportCandidate[]=candidates.map((candidate:ImportCandidate)=>({...candidate,topics:[...candidate.topics]}));
-  const config=await getConfig(env);const key=await getProviderKey(env,config.provider);
-  if(!key)return {candidates:original,status:'needsConfiguration',warnings:['请先在 AI 设置中保存当前服务商的 API 密钥，再点击 AI 识别；无需启用自动 AI 阅读。']};
-  validateRuntimeConfig(config);
-  if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');
-  const maxRows=Math.max(1,Math.min(25,Math.floor(outputLimit(config)/160)));
+  const config=await getConfig(env);const key=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
+  if(key)validateRuntimeConfig(config);
+  if(key&&(key.length<8||key.length>1024||/[\r\n]/.test(key)))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');
+  const maxRows=Math.max(1,Math.min(25,Math.floor((key?outputLimit(config):4096)/160)));
   const eligible=original.filter(candidate=>importKey(candidate)!==undefined).slice(0,maxRows);
   const prompt=JSON.stringify({maximum_candidates:maxRows,allowed_topics:TOPICS,existing_candidates:eligible.map(candidate=>({candidateId:candidate.id,name:textOnly(candidate.name).slice(0,150),platform:candidate.platform,locator:importLocator(candidate.platform,candidate.locator),topics:candidate.topics.filter(topic=>(TOPICS as readonly string[]).includes(topic))})),untrusted_text:importPromptText(text)});
   const rowProperties={candidateId:{type:['string','null']},name:{type:'string'},platform:{type:'string',enum:IMPORT_PLATFORMS},locator:{type:'string'},topics:{type:'array',items:{type:'string',enum:TOPICS},maxItems:8},evidence:{type:'string'}};
   const task:ModelTask={instructions:IMPORT_INSTRUCTIONS,schemaName:'yourfeed_source_import',schema:{type:'object',additionalProperties:false,properties:{candidates:{type:'array',maxItems:maxRows,items:{type:'object',additionalProperties:false,properties:rowProperties,required:Object.keys(rowProperties)}}},required:['candidates']}};
-  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(prompt)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  const {reservationId}=await reserve(env,config,'source-import-'+digest,prompt,false,undefined,task.instructions);
-  let result:ModelResult;
-  try{result=await callModel(config,key,prompt,false,undefined,task);}catch(error){await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});throw providerMessage(error);}
-  if(result.issue){await settleResult(env,config,reservationId,result,false);throw new ProviderDiagnosticError(result.issue);}
-  let rows:z.infer<typeof importRowSchema>[];
-  try{const parsed=importResponseSchema.parse(JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,'')));if(parsed.candidates.length>maxRows)throw new Error('too many');rows=parsed.candidates;}
-  catch{await settleResult(env,config,reservationId,result,false);throw new HttpError(502,'模型返回的订阅清单格式不完整，本次未添加来源；请重试或使用普通解析。');}
+  const parseRows=(text:string)=>{const parsed=importResponseSchema.parse(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g,'')));if(parsed.candidates.length>maxRows)throw Error('too many');return parsed.candidates;};
+  let rows:z.infer<typeof importRowSchema>[],reservationId:string|undefined,result:ModelResult|undefined;
+  if(!key){
+    const value=await runFreeAi(env,{instructions:task.instructions,prompt:JSON.stringify({required_output_schema:task.schema,untrusted_task_data:prompt}),parse:parseRows});
+    if(value===undefined){const profile=await getProfile(env);return {candidates:original,status:'completed',warnings:[freeAiMessages[profile.language].fallback]};}
+    rows=value;
+  }else{
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(prompt)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+    ({reservationId}=await reserve(env,config,'source-import-'+digest,prompt,false,undefined,task.instructions));
+    try{result=await callModel(config,key,prompt,false,undefined,task);}catch(error){await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});throw providerMessage(error);}
+    if(result.issue){await settleResult(env,config,reservationId,result,false);throw new ProviderDiagnosticError(result.issue);}
+    try{rows=parseRows(result.text);}catch{await settleResult(env,config,reservationId,result,false);throw new HttpError(502,'模型返回的订阅清单格式不完整，本次未添加来源；请重试或使用普通解析。');}
+  }
   const output=[...original],warnings:string[]=[];const eligibleIds=new Set(eligible.map(candidate=>candidate.id));let rejected=0;
   for(const row of rows){
     const name=textOnly(row.name).trim(),normalized=importLocator(row.platform,row.locator);const keyValue=importKey(row);const index=row.candidateId===null?-1:output.findIndex(candidate=>candidate.id===row.candidateId);
@@ -334,7 +340,7 @@ export async function assistSourceImport(env:Env,text:string,candidates:readonly
   if(rejected)warnings.push('已忽略无法从输入或已验证候选中确认的 AI 来源；未猜测 RSS 地址或频道标识。');
   if(original.length>eligible.length)warnings.push('为遵守单次输出额度，本次只辅助识别部分来源；其余普通解析结果已保留，可继续编辑。');
   if(rows.length===0)warnings.push('AI 未识别出有充分依据的新来源，普通解析结果已保留。');
-  await settleResult(env,config,reservationId,result,true);
+  if(reservationId&&result)await settleResult(env,config,reservationId,result,true);
   return {candidates:output,status:'completed',warnings};
 }
 
@@ -348,9 +354,8 @@ export async function sourceDiscoveryConversation(env:Env,messages:readonly Sour
   if(!Array.isArray(messages)||messages.length<1||messages.length>12||messages.some(message=>!message||!['user','assistant'].includes(message.role)||typeof message.content!=='string'||!message.content.trim()||message.content.length>2000)||messages.reduce((total,message)=>total+message.content.length,0)>12000||messages.at(-1)?.role!=='user')throw new HttpError(400,'请发送有效的对话：最多 6 轮、每条 2,000 字、合计 12,000 字，最后一条应为你的消息。');
   for(const message of messages)assertSafeAiInput(message.content);
   if(!Array.isArray(catalog)||catalog.length>100)throw new HttpError(400,'推荐来源目录格式不正确。');
-  const profile=suppliedProfile||await getProfile(env);const config=await getConfig(env);const key=await getProviderKey(env,config.provider);
-  if(!key)return {message:({zh:'请先在 AI 设置中保存当前服务商的 API 密钥，然后重新发送消息；无需开启自动 AI 阅读。','zh-TW':'請先在 AI 設定中儲存目前服務商的 API 金鑰，然後重新傳送訊息；無需開啟自動 AI 閱讀。',en:'Save an API key for the selected provider in AI settings, then send your message again. Automatic AI reading can stay off.',vi:'Hãy lưu khóa API của nhà cung cấp đã chọn trong phần cài đặt AI rồi gửi lại tin nhắn. Không cần bật tính năng đọc tự động bằng AI.'})[profile.language],ready:false,recommendedIds:[],needsConfiguration:true};
-  validateRuntimeConfig(config);if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');
+  const profile=suppliedProfile||await getProfile(env);const config=await getConfig(env);const key=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
+  if(key){validateRuntimeConfig(config);if(key.length<8||key.length>1024||/[\r\n]/.test(key))throw new HttpError(400,'已保存的 API 密钥格式不正确，请在 AI 设置中更新。');}
   const allowed=catalog.filter(entry=>entry&&typeof entry.id==='string'&&entry.id.length>0&&entry.id.length<=120&&!/[\u0000-\u001f\u007f]/.test(entry.id)&&typeof entry.name==='string'&&IMPORT_PLATFORMS.includes(entry.platform)&&typeof entry.locator==='string'&&importLocator(entry.platform,entry.locator)!==undefined);
   const ids=new Set(allowed.map(entry=>entry.id));if(ids.size!==allowed.length||!ids.size)throw new HttpError(400,'推荐来源目录暂时不可用，请稍后重试。');
   const language=languageName(profile.language);
@@ -358,6 +363,10 @@ export async function sourceDiscoveryConversation(env:Env,messages:readonly Sour
 Have a short, natural conversation. Ask at most two or three necessary questions about interests, goals, or preferred reading languages across the conversation; do not repeat questions already answered. Saved editable preferences can help but are not proof of background, occupation, skills, beliefs or identity. Do not infer sensitive traits or claim personal facts. When enough preferences are available, briefly explain a balanced selection and set ready:true. Select at most twelve IDs from allowed_catalog only; recommend fewer when appropriate. Never invent IDs, sources, feeds or channel identifiers. Do not include any URLs in message. If the catalog lacks a requested source, say so and suggest the separate link/import tool rather than guessing. With ready:false, you may include tentative catalog IDs. Nothing is added or saved by this conversation; adding always requires the user's separate action.`;
   const prompt=JSON.stringify({editable_preferences:{goals:profile.goals,topic_weights:profile.topicWeights,summary_language:profile.summaryLanguage},allowed_catalog:allowed.map(entry=>({id:entry.id,name:textOnly(entry.name).slice(0,150),topics:entry.topics,language:entry.language,content_type:entry.contentType,description:textOnly(entry.description?.[profile.language==='zh'||profile.language==='zh-TW'?'zh':'en']||'').slice(0,600)})),untrusted_messages:messages.map(message=>({role:message.role,content:importPromptText(message.content)}))});
   const task:ModelTask={instructions,schemaName:'yourfeed_source_discovery',schema:{type:'object',additionalProperties:false,properties:{message:{type:'string',minLength:1,maxLength:2000},ready:{type:'boolean'},recommendedIds:{type:'array',maxItems:12,items:{type:'string',enum:[...ids]}}},required:['message','ready','recommendedIds']}};
+  if(!key){
+    const reply=messages.length<=6?await runFreeAi(env,{instructions,prompt,parse:text=>{const value=discoveryResponseSchema.parse(JSON.parse(text));if(value.recommendedIds.some(id=>!ids.has(id))||value.ready&&!value.recommendedIds.length||!textOnly(value.message).trim()||/https?:\/\/|\bwww\./i.test(value.message))throw Error('invalid');return {...value,message:textOnly(value.message)};}}):undefined;
+    return reply??{message:freeAiMessages[profile.language].fallback,ready:false,recommendedIds:[]};
+  }
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(prompt)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
   const {reservationId}=await reserve(env,config,'source-discovery-'+digest,prompt,false,profile,instructions);
   let result:ModelResult;
@@ -369,11 +378,21 @@ Have a short, natural conversation. Ask at most two or three necessary questions
   await settleResult(env,config,reservationId,result,true);return reply;
 }
 
-export async function analyzeItem(env: Env, item: ContentItem): Promise<ContentItem> {
+export async function analyzeItem(env: Env, item: ContentItem, allowFree=true): Promise<ContentItem> {
   const config = await getConfig(env);
+  const ownKey=config.aiChannel==='free'?undefined:await getProviderKey(env,config.provider);
+  if(!ownKey){
+    if(!allowFree)throw new HttpError(400,'Automatic reading requires your own AI connection.');
+    const profile=await getProfile(env);const fingerprint='free-v1-'+await contentFingerprint(item)+'|'+profile.version+'|'+profile.summaryLanguage;
+    const cached=await getAnalysisCache(env,item.id,fingerprint,'custom','Free public channel');
+    if(cached)return {...item,analysis:cached};
+    const analysis=await runFreeAi(env,{instructions:buildSystemPrompt(profile),prompt:promptFor(item,profile),parse:text=>validateAnalysis(JSON.parse(text),item,'Free public channel',profile)});
+    if(!analysis)throw new HttpError(503,freeAiMessages[profile.language].fallback);
+    await saveAnalysisCache(env,item.id,fingerprint,'custom','Free public channel',analysis);const updated={...item,analysis};await upsertContent(env,[updated]);return updated;
+  }
   if (!config.enabled) throw new HttpError(400, '请先在设置中启用 AI 阅读。');
   validateRuntimeConfig(config);
-  const key = await getProviderKey(env,config.provider);
+  const key = ownKey;
   if (!key) throw new HttpError(400, '请先在私有设置页保存所选服务商的 API 密钥。');
   const profile=await getProfile(env);const fingerprint = await analysisFingerprint(item,config,profile);
   const cached = await getAnalysisCache(env,item.id,fingerprint,config.provider,config.model);
@@ -392,6 +411,7 @@ export async function analyzeItem(env: Env, item: ContentItem): Promise<ContentI
   const updated = {...item,analysis};await upsertContent(env,[updated]);return updated;
 }
 export async function analyzePending(env: Env, limit = 3, userId?: string): Promise<{analyzed:number;remaining:number;error?:string}> {
+  const config=await getConfig(env);if(config.aiChannel==='free'||!await getProviderKey(env,config.provider))return {analyzed:0,remaining:0};
   const [all,sources,feedback,profile]=await Promise.all([listContent(env),listSources(env),userId?readFeedback(env,userId):Promise.resolve({}),getProfile(env)]);
   const githubDisabled=sources.some(source=>source.id==='github-stars'&&(!source.enabled||(source as typeof source&{blocked?:boolean}).blocked));
   // Reuse feed visibility and explicit-feedback precedence. Only these public content
@@ -401,12 +421,12 @@ export async function analyzePending(env: Env, limit = 3, userId?: string): Prom
   const selected=pending.filter(item=>{const count=perSource.get(item.sourceId)||0;if(count>=2)return false;perSource.set(item.sourceId,count+1);return true;}).slice(0,Math.max(1,Math.min(5,limit)));
   let analyzed=0;
   for (const item of selected) {
-    try { await analyzeItem(env,item);analyzed++; }
+    try { await analyzeItem(env,item,false);analyzed++; }
     catch (error) { return {analyzed,remaining:pending.length-analyzed,error:providerMessage(error).message}; }
   }
   return {analyzed,remaining:pending.length-analyzed};
 }
-export async function testProvider(env: Env, overrideConfig?: Partial<ProviderConfig>): Promise<{ok:true;provider:Provider;model:string;message:string}> {
+export async function testProvider(env: Env, overrideConfig?: Partial<ProviderConfig>,receiptIdentity?:import('./onboarding').TestReceiptIdentity): Promise<{ok:true;provider:Provider;model:string;message:string;testReceipt?:string}> {
   // Draft connection tests may change credentials/model, never the saved spending limits.
   const saved=await getConfig(env);const provider=overrideConfig?.provider??saved.provider;
   if (!PROVIDERS.includes(provider)) throw new HttpError(400,'服务商无效。');
@@ -429,7 +449,9 @@ export async function testProvider(env: Env, overrideConfig?: Partial<ProviderCo
   try {
     const result=await callModel(config,key,'Reply with OK.',true);await settleResult(env,config,reservationId,result,!result.issue);settled=true;
     if(result.issue)throw new ProviderDiagnosticError(result.issue);
-    return {ok:true,provider:config.provider,model:config.model,message:'连接成功。测试用量已计入本站用量。'};
+    let testReceipt:string|undefined;
+    if(receiptIdentity)try{const {issueTestReceipt}=await import('./onboarding');testReceipt=await issueTestReceipt(env,receiptIdentity,config,key);}catch{/* Optional receipt failure cannot fail an already billed successful test. */}
+    return {ok:true,provider:config.provider,model:config.model,message:'连接成功。测试用量已计入本站用量。',...(testReceipt?{testReceipt}:{})};
   } catch (error) {
     if(!settled)await settleUsage(env,{reservationId,cost:0,inputTokens:0,outputTokens:0,success:false,uncertain:error instanceof HttpError?false:!(error instanceof ProviderFailure)||error.uncertain});
     const publicError=providerMessage(error);
