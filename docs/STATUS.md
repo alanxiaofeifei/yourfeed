@@ -1,5 +1,12 @@
 # 当前项目状态
 
+## 生产上线（2026-11-15 12:55 UTC+8）：免费通道 Groq 补充 / PR #24
+- 合并 [PR #24](https://github.com/alanxiaofeifei/yourfeed/pull/24) → `main` `d4a293ad2ed93ae47bbc8bd053b3fa93ae0de748`。顺序：Groq `openai/gpt-oss-120b` →（仅限流）`openai/gpt-oss-20b` → OVHcloud → Pollinations；仍计入每实例每天 10 次。
+- 运营者 secret `FREE_AI_GROQ_API_KEY`（Alan 提供的 Groq Key，经 stdin 写入，值不入仓库/日志）已设置于 `yourfeed` 与 `yourfeed-member-001`。无迁移；部署前书签：生产 `0000002a-00000000-00005124-14fa0f9b4bde8999c30c1fa664fd75c7`，member `0000004e-00000000-00005124-5833d50d23a7930aa0842128207b15a2`。
+- 生产 `yourfeed` 当前版本 `e92c4384-e2bd-44d4-b748-f3c90b84a599`（代码 `d2a7bb53` + secret）；回滚 `wrangler rollback 0db23263-919a-4f73-b8cd-dbf85ef11f07 --name yourfeed`。无 cron。
+- `yourfeed-member-001` 当前版本 `17e8a935-61e8-4639-94db-6c13c72a57d2`（代码 `109c8e0b` + secret）；回滚 `wrangler rollback ec6501ff-0341-4c6c-87f4-10731ce9e54b --name yourfeed-member-001`。cron `*/15`、`BACKGROUND_SCHEDULE_CONFIGURED=true`、workers.dev/preview 关闭、自定义域保持。
+- 验证：两端匿名 smoke 通过（health ok/schemaReady、/login 200、API 401、/ → /login）。Cloudflare 出口（临时探针 Worker，CMH，已删除）：120b 200 / 510–765 ms、20b 200 / 280–356 ms，均为合法 JSON。登录后经应用真实调用未验证。
+
 ## 本地候选（2026-11-15）：免费公共通道运营者补充
 
 - 任务入口：仓库上一级 `TASK.md`；分支 `feat/free-ai-groq`，基线 `e389059`。可选 `FREE_AI_GROQ_API_KEY`：120b → 仅限流时 20b → OVH → Pollinations；未设置时原请求不变。按模型冷却、剩余额度预冷却、单次最多 4 秒及总计 8 秒，沿用每实例每天 10 次且每任务只计一次。
