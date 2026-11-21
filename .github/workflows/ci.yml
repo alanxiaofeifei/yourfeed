@@ -15,7 +15,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --check scripts/preflight.mjs && node --check scripts/deploy.mjs
+      - run: node --check scripts/preflight.mjs && node --check scripts/deploy.mjs && node --check hosting/scripts/multi-account.mjs
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: YOURFEED_WRANGLER_CONFIG=wrangler.multi.preview.jsonc npm run build
