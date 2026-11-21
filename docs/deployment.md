@@ -1,5 +1,7 @@
 # Deploy and configure sign-in / 部署与登录
 
+For the separate open-signup service (`HOSTING_MODE=multi`), use the [multi-tenant deployment procedure](hosting.md#multi-tenant-deployment-and-operator-commands) and its explicit `wrangler.multi*.jsonc` configurations. Its auth D1 and tenant Durable Objects are independent of the standalone/invited deployments described below. The ordinary `npm run deploy` command targets the existing standalone flow and must not be used to publish the new service.
+
 ## Cloudflare Deploy Button
 
 1. Open [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/alanxiaofeifei/yourfeed). Choose your account, repository and Worker name. The source repository must be public; your copied repository can be managed according to your needs.

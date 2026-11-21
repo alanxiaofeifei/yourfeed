@@ -4,6 +4,7 @@ import {HttpError} from './security';
 interface HostedPolicy {instanceId:string;origin:string;state:'reserved'|'active';ownerEmail:string;memberId:string;epoch:number;}
 interface FetchService {fetch(input:Request):Promise<Response>;}
 const text=(env:Env,key:string)=>typeof env[key]==='string'?String(env[key]).trim():'';
+export const hasHostedLimits=(env:Env)=>['hosted','multi'].includes(text(env,'HOSTING_MODE'));
 export const isHosted=(env:Env)=>text(env,'HOSTING_MODE')==='hosted';
 /** A hosted tenant is one owner in one database, never a selector for several databases. */
 function configuration(env:Env){

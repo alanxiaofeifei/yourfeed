@@ -5,7 +5,7 @@ import {getProfile,normalizeProfile,saveProfile} from './profile';
 import {TOPIC_LABELS} from '../shared/profile';
 import {validatePublicUrl} from './fetch-safe';
 import {HttpError} from './security';
-import {isHosted} from './hosted';
+import {hasHostedLimits as isHosted} from './hosted';
 
 const object=(value:unknown):Record<string,unknown>=>{if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(400,'归档格式无效。');return value as Record<string,unknown>;};
 function text(value:unknown,max:number,required=false):string {if(value===undefined&&!required)return '';if(typeof value!=='string'||value.length>max||(required&&!value.trim())||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value))throw new HttpError(400,'归档文字或内容标识无效。');return value;}

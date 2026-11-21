@@ -1,4 +1,48 @@
-# Independent invited instances / 独立实例受邀托管
+# Hosting modes / 托管模式
+
+## Open self-service signup (issue #28)
+
+The separate `yourfeed-app` service uses `HOSTING_MODE=multi`: one Worker, one shared authentication D1 (`AUTH_DB`), and one SQLite Durable Object (`TENANT_FEEDS`, `new_sqlite_classes`) per verified Better Auth user ID. Existing `yourfeed`, member-001 and invitation control resources retain their independent architecture below; this release does not migrate them. New users start with an empty library. Email OTP via Resend is the initial sign-in method; Google is hidden unless explicitly enabled.
+
+The shared D1 contains only authentication, atomic account capacity, approved emails, deletion requests and cron state. A SQLite trigger rejects a new account atomically when `MAX_ACCOUNTS` (default 10) is reached, including concurrent OTP/OAuth registrations. Existing accounts and approved mailboxes bypass capacity. Before generating or sending an OTP, the server also checks capacity and returns a localized application link addressed to `alan.xiaofei224@gmail.com`, with the entered email in the body. Availability is checked again at actual account creation, so an OTP is not a reservation. Account availability necessarily reveals registration/capacity information and is rate limited.
+
+Every business API call authenticates in the Worker and invokes exactly one tenant DO RPC, carrying the verified identity independently of browser headers. Its D1-compatible SQLite adapter runs existing app migrations on first use and executes batches atomically with `transactionSync`; FTS5 trigram and JSON functions are covered by workerd tests. The encryption key is HKDF-SHA256 derived from the master key and immutable user ID, with a tenant-specific secret namespace. No operator AI/YouTube credential, including `FREE_AI_GROQ_API_KEY`, is passed into business code. The optional keyless free channel retains its per-tenant daily limit; this service does not use an operator Groq supplement. Hosting administrators can still access platform resources; this is not end-to-end encryption.
+
+One production cron (`*/30 * * * *`) round-robins one account per run, with at most two queued account deletions. Background source fetching/AI remain separately opt-in, one source per tenant tick; the existing hosted daily, source, storage and retention limits also apply. The preview has no scheduled trigger and has a guarded cron fixture endpoint. Free-plan limits are shared with other projects: DO requests 100,000/day, SQLite 5 million rows read/day, 100,000 rows written/day and 5 GB total storage; five account-wide cron triggers. Reaching a quota fails operations; no automatic paid upgrade is performed. See [Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+### Multi-tenant deployment and operator commands
+
+Configurations are `wrangler.multi.preview.jsonc` (only `yourfeed-app-preview`) and `wrangler.multi.jsonc` (only `yourfeed-app`, custom domain `yourfeed-app.alanzhu.dev`). Their D1 binding is `AUTH_DB`, never an existing instance DB. Create the named empty database, put its returned ID in the matching config, then run:
+
+```sh
+npx wrangler d1 migrations apply AUTH_DB --remote --config wrangler.multi.preview.jsonc
+YOURFEED_WRANGLER_CONFIG=wrangler.multi.preview.jsonc npm run build
+npx wrangler deploy --config dist/server/wrangler.json
+# For production, substitute wrangler.multi.jsonc in the migration/build commands.
+```
+
+Use independent `AUTH_SECRET` and `APP_ENCRYPTION_KEY` Secrets for each target, piped from `openssl rand -hex 32` directly to `wrangler secret put NAME --config CONFIG`. Back up the encryption master key privately if ongoing recovery is required. Pipe the authorized Resend key from the local environment; `AUTH_EMAIL_FROM=YourFeed <login@mail.alanzhu.dev>` is a plain variable. No provider AI keys belong in these Workers. The preview-only `AUTH_TEST_FIXTURE_OTP` Secret applies solely to synthetic `@example.test` mailboxes when both deployment marker and exact preview origin match. It must be absent in production. Do not use real recipient addresses for acceptance.
+
+```sh
+node hosting/scripts/multi-account.mjs preview list
+node hosting/scripts/multi-account.mjs preview approve c@example.test
+node hosting/scripts/multi-account.mjs production approve person@example.com
+node hosting/scripts/multi-account.mjs production cap 15
+# Review, rebuild using wrangler.multi.jsonc, then deploy to apply the capacity var.
+node hosting/scripts/multi-account.mjs production delete person@example.com
+```
+
+The helper validates exact Worker/D1 names and executes only against `AUTH_DB` in the selected config. Deletion queues the immutable user ID and removes its approval: protected requests immediately deny that account, then the next cron defers busy tenant operations to a later tick, calls `storage.deleteAll()`, and removes auth sessions/accounts/user. Pending deletions continue counting toward capacity until completed. At most two deletions finish per run. A retry is safe. Existing downloaded copies and platform recovery/log retention are outside deletion. Offer export before ordinary deletion. Raising capacity changes shared quota exposure; review account limits first.
+
+### Enable Google later (Alan)
+
+In Google Cloud Console → Google Auth Platform → Clients → existing YourFeed Web client, add the exact authorized redirect URI `https://yourfeed-app.alanzhu.dev/api/auth/callback/google`. Under Audience, publish the app **In production**; keep only `openid`, `email`, `profile`. Then save `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as Secrets on `yourfeed-app`, set `GOOGLE_SIGNIN_ENABLED=true` in its config, rebuild/deploy, and verify a real sign-in. Without that flag, credentials alone cannot enable the button or backend provider. Existing identities must link providers explicitly; equal emails do not silently merge identities.
+
+### Release and rollback
+
+Local checks and preview evidence are recorded in [STATUS](STATUS.md); they do not establish real email delivery or Google consent. Production requires all task gates and green CI. Preserve the independent preview for review. Code rollback uses `wrangler rollback VERSION --name yourfeed-app --config wrangler.multi.jsonc`; it does not undo D1 migrations or DO SQLite data. The first production version has no earlier production rollback ID; disable only this new Worker if initial acceptance fails. Never point this service at an old instance database.
+
+## Independent invited instances / 独立实例受邀托管
 
 YourFeed can be operated in single-owner self-hosted mode or as an invited collection of independent single-owner instances. Hosted code is open source under MIT; an operator may use it commercially, adjust capacity, and maintain their own policies. This repository does not implement billing or promise commercial SLA/free capacity.
 

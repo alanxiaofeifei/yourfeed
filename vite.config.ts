@@ -7,6 +7,6 @@ export default defineConfig({
   plugins: [
     vinext(),
     ...(process.env.YOURFEED_BUILD_PROFILE === 'sites' ? [sites()] : []),
-    cloudflare({ viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] } }),
+    cloudflare({ ...(process.env.YOURFEED_WRANGLER_CONFIG?{configPath:process.env.YOURFEED_WRANGLER_CONFIG}:{}), viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] } }),
   ],
 });
