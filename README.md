@@ -57,7 +57,7 @@ Source setup now includes a free curated catalog, AI interest conversations, and
 
 ## Open registration and independent hosting
 
-A separate open-signup service is being implemented for [issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28): email codes, a default ten-account cap with an approved-email override, and one isolated SQLite Durable Object per user. The existing project/hosted entry above retains its current sign-in policy. See [hosting modes and operator commands](docs/hosting.md#open-self-service-signup-issue-28) and [release status](docs/STATUS.md) for the verified deployment stage. Google remains disabled until the operator completes its setup.
+Open registration is available at **[yourfeed-app.alanzhu.dev](https://yourfeed-app.alanzhu.dev/)**: email codes, a default ten-account cap with an approved-email override, and one isolated SQLite Durable Object per user ([#28](https://github.com/alanxiaofeifei/yourfeed/issues/28), [PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29)). When full, the sign-in page offers an email application before sending a code. The existing project/hosted entry above retains its current sign-in policy. See [hosting modes and operator commands](docs/hosting.md#open-self-service-signup-issue-28) and [release evidence](docs/STATUS.md). Google remains disabled until the operator completes its setup.
 
 ## Independent self-hosting and invited hosting
 

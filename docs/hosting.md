@@ -2,7 +2,7 @@
 
 ## Open self-service signup (issue #28)
 
-The separate `yourfeed-app` service uses `HOSTING_MODE=multi`: one Worker, one shared authentication D1 (`AUTH_DB`), and one SQLite Durable Object (`TENANT_FEEDS`, `new_sqlite_classes`) per verified Better Auth user ID. Existing `yourfeed`, member-001 and invitation control resources retain their independent architecture below; this release does not migrate them. New users start with an empty library. Email OTP via Resend is the initial sign-in method; Google is hidden unless explicitly enabled.
+The separate **[yourfeed-app.alanzhu.dev](https://yourfeed-app.alanzhu.dev/)** service is deployed ([PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29), verified release details in [STATUS](STATUS.md)) and uses `HOSTING_MODE=multi`: one Worker, one shared authentication D1 (`AUTH_DB`), and one SQLite Durable Object (`TENANT_FEEDS`, `new_sqlite_classes`) per verified Better Auth user ID. Existing `yourfeed`, member-001 and invitation control resources retain their independent architecture below; this release does not migrate them. New users start with an empty library. Email OTP via Resend is the initial sign-in method; Google is hidden unless explicitly enabled.
 
 The shared D1 contains only authentication, atomic account capacity, approved emails, deletion requests and cron state. A SQLite trigger rejects a new account atomically when `MAX_ACCOUNTS` (default 10) is reached, including concurrent OTP/OAuth registrations. Existing accounts and approved mailboxes bypass capacity. Before generating or sending an OTP, the server also checks capacity and returns a localized application link addressed to `alan.xiaofei224@gmail.com`, with the entered email in the body. Availability is checked again at actual account creation, so an OTP is not a reservation. Account availability necessarily reveals registration/capacity information and is rate limited.
 
@@ -40,7 +40,7 @@ In Google Cloud Console → Google Auth Platform → Clients → existing YourFe
 
 ### Release and rollback
 
-Local checks and preview evidence are recorded in [STATUS](STATUS.md); they do not establish real email delivery or Google consent. Production requires all task gates and green CI. Preserve the independent preview for review. Code rollback uses `wrangler rollback VERSION --name yourfeed-app --config wrangler.multi.jsonc`; it does not undo D1 migrations or DO SQLite data. The first production version has no earlier production rollback ID; disable only this new Worker if initial acceptance fails. Never point this service at an old instance database.
+Local checks and preview evidence are recorded in [STATUS](STATUS.md); they do not establish real email delivery or Google consent. The initial release passed all task gates and green CI; production anonymous smoke passed with no accounts created or real emails sent. Actual inbox delivery and Google consent still require operator verification. Preserve the independent preview for review. Code rollback uses `wrangler rollback VERSION --name yourfeed-app --config wrangler.multi.jsonc`; it does not undo D1 migrations or DO SQLite data. The initial release has no earlier functional production version. Its closed bootstrap rollback is `42e434f9-d258-4848-aa19-525d723f6cc8`: rolling back to it disables configured sign-in while leaving new D1/DO data intact. This is an emergency closure, not a database restore. Never point this service at an old instance database.
 
 ## Independent invited instances / 独立实例受邀托管
 

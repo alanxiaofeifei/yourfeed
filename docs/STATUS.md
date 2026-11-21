@@ -1,24 +1,27 @@
 # 当前项目状态
 
-## Issue #28 · 开放注册（2026-11-21，预览验收完成，待 CI 发布）
+## 生产上线：开放注册 #28 / PR #29（2026-11-21）
 
-- 任务入口：[Issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28)，分支 `feat/open-signup`，基线 `43c368b`；任务明确授权仅新增 `yourfeed-app-preview` / `yourfeed-app`，全门禁及 CI 通过后才发布新生产服务。#28 取代 #26 的新增邀请计划；既有实例保留。
-- `HOSTING_MODE=multi`：共享 auth D1 的原子名额触发器（默认 10 / 批准名单豁免）、OTP 发送前检查、四语满员申请 mailto、Google 显式开关；每用户 SQLite DO 复用业务迁移与 D1 适配、HKDF 密钥、业务环境凭据白名单；每次业务 API 一次 DO RPC。既有 standalone/hosted 分支保留。
-- 每 tick 一用户轮转、最多两项删除，删除先拒绝访问、忙碌 DO 延后清除；沿用托管来源/导入/存储配额与 90 天缓存保留。管理脚本和 Google 步骤见 [hosting](hosting.md)。无运营者 AI/Groq/YouTube Key；只有原有无 Key 免费公共通道。
-- 本地 Node **24.22.1** / npm **11.21.1**、原 package-lock：`npm ci`、typecheck、全量单元 **1013/1013（71 files）**、普通及 multi 构建、预览 dry-run、生产构建 E2E **115 passed / 29 既有可选 skipped**、`git diff --check` 通过。12 例新增真实 workerd 测试覆盖适配层/原子批处理/FTS/JSON、并发名额、mailto、双租户数据与密钥、跨租户解密拒绝、无管理员回退、fixture 默认关闭、轮转/删除。
-- 预览 https://yourfeed-app-preview.alan-xiaofei224.workers.dev ，版本 **dd614e81-2e4d-4fc5-91dd-f92d940fa690**；D1 **76632946-58cf-48a6-ba6c-249252530259**，仅两个共享 auth/account 迁移。`MAX_ACCOUNTS=2`：三个合成并发验证只有两个成功；清理无 DO 的竞态账号后，a/b 各保存不同来源和假 Key、无法互见，c 满员且未生成 OTP，批准 c 后可入、a 满员仍可登录。真实 cron 及删除/旧会话拒绝通过。最终保留 a/b/c（c 为批准名单例外）。未发真实邮件、未调真实 AI。
-- 8 张 Chromium 桌面/390px、明暗主题截图位于仓库外 `/workspace/yf-open-20261121/shots/`；空库截图使用最后重新注册的 c，已等待加载完成并检查零占位卡。满员邮件链接手机布局已目视修复。验收证据 `/workspace/yf-open-20261121/preview-checks.json`；最终交付记录将写入同目录 `DONE.md`。预览 fixture 只在精确预览 origin + 部署标记 + `@example.test` 生效，预览拒发真实邮箱；生产配置无 fixture。
-- `yourfeed` / member-001 前后只读核对版本保持 **e92c4384-e2bd-44d4-b748-f3c90b84a599** / **17e8a935-61e8-4639-94db-6c13c72a57d2**。未修改任何既有实例、数据、密钥、域名或 cron。当前只有一条既有账号 cron，生产新服务将新增一条。
-- 同步：实现本地提交 `4e56439`、管理查询修复 `d861ad2`、手机满员链接修复 `f4c6cfa`；待推送/PR/CI，未合并。所有门槛通过后仅预建了新生产空 D1 **a7cd3a0c-e4b9-4513-a1dc-e7f3d0c5dfb0**，尚未迁移或部署生产 Worker。下一步：推送并创建 #28 PR，CI 全绿后 squash-merge，只部署新的 `yourfeed-app`，匿名验证后登记最终版本。
-- 工具事实：当前为 Codex 会话（系统标识基于 GPT-6）；无法独立读取精确模型版本、推理档位、订阅计费或上下文占用，也未切换模型。任务所附 `gpt-6.1-sol/high`、ModelDial 与 Antigravity 状态是任务作者提供的历史选择说明，不冒充本次实测；以本项目门禁与 CI 为发布证据。
+- [PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29) 在 push / PR 两次 CI 全绿后 squash-merge：**74be44f38aaf5b37a72e1315b5d50ffa2b1d4102**（13:34 UTC）。[Issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28) 为授权与架构依据，取代 #26 的新增邀请计划；既有独立实例与控制服务保留。
+- **新服务 https://yourfeed-app.alanzhu.dev/**：Worker `yourfeed-app`，最终版本 **3c6e5835-9405-45ca-9d4f-5bcdfb623666**；独立 auth D1 **a7cd3a0c-e4b9-4513-a1dc-e7f3d0c5dfb0**，仅共享 auth/account 迁移 0001/0002；每用户独立 SQLite DO（`TenantFeed`、`new_sqlite_classes`）首次使用应用业务迁移。`MAX_ACCOUNTS=10`，一条 `*/30 * * * *` cron，workers.dev/preview URLs 关闭。普通发件变量 `AUTH_EMAIL_FROM=YourFeed <login@mail.alanzhu.dev>`，独立随机 AUTH/加密 Secrets；只有 AUTH、加密、Resend 三个 Secrets，无 fixture、Google 或运营者 AI/YouTube Key。
+- 架构与行为：原子名额触发器 / 批准名单 / 发 OTP 前检查 / 四语申请 mailto；已有用户满员仍可登录。每业务 API 一次对应 DO RPC，HKDF 租户加密及业务环境凭据白名单。轮转每 tick 一人、最多两项账号删除（先拒绝访问、忙碌 DO 延后清除）；沿用托管来源/导入/存储/90 天保留限制。管理与 Google 后续操作见 [hosting](hosting.md)。
+- 生产匿名 smoke 全通过：`/login` 200、`/` → `/login`、业务 API 401、邮箱开启/Google 关闭、合成邮箱名额预检查 `open`（不生成或发送 OTP）、fixture cron 404；真实 Chromium 登录表单可用且无 Google 按钮。未发真实邮件、未创建生产账户，核对 auth_user **0**。不宣称真实邮件投递、真实用户登录或 Google OAuth 已验收。
+- 本地 Node **24.22.1** / npm **11.21.1**、原 package-lock：`npm ci`、typecheck、全量单元 **1013/1013（71 files）**、普通与 multi 构建、dry-run、生产构建 E2E **115 passed / 29 既有可选 skipped**、`git diff --check` 通过。新增 12 例真实 workerd 测试含适配层/原子 batch/FTS/JSON、并发名额、mailto、双租户与跨租户解密拒绝、无管理员 Key 回退、fixture 默认关闭、轮转/删除。CI 已同时构建两个入口。
+- **预览保留供审阅**：https://yourfeed-app-preview.alan-xiaofei224.workers.dev ，版本 **dd614e81-2e4d-4fc5-91dd-f92d940fa690**；独立 D1 **76632946-58cf-48a6-ba6c-249252530259**，`MAX_ACCOUNTS=2`，无定时 cron，合成 a/b + 批准 c。线上竞态只允许两个成功；A/B 来源及假 Key 隔离，C 满员时零 OTP、新批准后可入、A 满员仍可登录；真实 guarded cron 和删除/旧 cookie 拒绝通过。fixture 仅精确预览 origin + 标记 + `@example.test` 生效，预览拒发真实邮箱。
+- 8 张最终桌面/390px、明暗截图：仓库外 `/workspace/yf-open-20261121/shots/`，空库使用重新注册的 C 并等待零加载占位。证据与完整阶段/提交/CI/版本/回滚记录：同目录上级 `DONE.md`、`preview-checks.json`、`production-smoke.json`，无真实凭证。凭据及浏览器状态只在受保护的 private 目录，不入仓库。
+- 前后只读核对：`yourfeed` **e92c4384-e2bd-44d4-b748-f3c90b84a599**、member-001 **17e8a935-61e8-4639-94db-6c13c72a57d2** 均未变；没有修改任何既有 Worker、D1、secrets、routes 或 cron。两个新 D1 后账号共 8 库；cron 共 2/5。使用支持 Free 的 SQLite DO，没有购买或启用付费功能；共享平台与 Resend 额度仍须持续观察，不承诺负载容量或 SLA。
+- 首次上线没有上一版完整可用生产版本。紧急关闭回滚：`npx wrangler rollback 42e434f9-d258-4848-aa19-525d723f6cc8 --name yourfeed-app --config wrangler.multi.jsonc`，退到无登录密钥的闭锁 bootstrap；不会撤销迁移、恢复 DB 或删除用户内容。日后正常发布须保存当时有效版本和恢复材料。
+- 剩余人工步骤：Alan 在 Google Web 客户端加 `https://yourfeed-app.alanzhu.dev/api/auth/callback/google`，Audience 发布 **In production** 后设置 Google Secrets 与 `GOOGLE_SIGNIN_ENABLED=true`；当前按要求隐藏。真实邮箱投递、长期恢复材料与共享额度运维由运营者完成。预览按要求保留，清理命令见仓库外 `DONE.md`。
+- 工具事实：当前 Codex 会话由系统标识为基于 GPT-6；精确版本/推理档位/费用/上下文占用不可独立读取，未切换模型。PR 按任务要求保留所提供的 `gpt-6.1-sol/high`、ModelDial/历史项目和 Antigravity 选择说明，并明确它不是本次已核实的运行身份；以项目验证与 CI 为发布证据。
 
 ---
 
-## 未完成（2026-11-15 收尾登记）
+## 未完成（2026-11-21 更新）
 
 首次使用引导（#11–#16 / PR #8）和 AI 速览（#21 / PR #22）已上线生产与 member-001，预览已拆除，不必重做。仍待执行：
 
-- [Issue #26](https://github.com/alanxiaofeifei/yourfeed/issues/26) 五人独立受邀托管（目前仅有 member-001；邀请链接先交给 Alan，不要联系 linh）
+新增受邀实例计划 #26 已由 #28 的公开注册服务取代；member-001 保留，不自动迁移或联系成员。
+
 - [Issue #27](https://github.com/alanxiaofeifei/yourfeed/issues/27) 首次使用配置引导视频（README 入口已有，成品视频未按上线后 UI 制作）
 
 跨项目索引：[project-overview#5](https://github.com/alanxiaofeifei/project-overview/issues/5)
