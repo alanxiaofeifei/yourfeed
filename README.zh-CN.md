@@ -55,6 +55,10 @@
 
 添加来源支持免费精选目录、AI 兴趣对话和可编辑的批量导入（链接、OPML、YouTube CSV、JSON）。推荐流的「换一批」会在当前筛选下避开最近内容，不触发 AI 或来源更新。参见[来源使用指南](docs/sources.md)、[社交登录配置指南](docs/authentication.md)与[大卡片设置导航预览](docs/screenshots/settings-sections.png)。
 
+## 开放注册服务
+
+**[yourfeed-app.alanzhu.dev](https://yourfeed-app.alanzhu.dev/)** 已开放邮箱验证码注册／登录，默认 10 个账户，每用户独立 SQLite Durable Object 保存信息流与加密 Key；新账户内容库为空。满员时先显示邮件申请链接，不发送验证码，已有账户仍可登录；管理员可提高上限或批准邮箱。Google 暂未启用。上方原项目／托管地址和已有独立实例保持原来的登录策略与数据不变。详见 [PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29)、[托管与管理命令](docs/hosting.md#open-self-service-signup-issue-28)及[实际发布记录](docs/STATUS.md)。
+
 ## 自建与独立受邀托管
 
 **候选版本状态：**下一阶段能力已写入源码并进行自动化检查；这不表示上面的公开网址或 AlanFeed 已运行本候选版本。五个受邀生产实例、正式发信域名和免费额度验收仍需运营者完成。AlanFeed 结构变更发布须先解决平台支持的数据库备份／恢复通道。
