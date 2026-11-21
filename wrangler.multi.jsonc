@@ -16,7 +16,7 @@
     {
       "binding": "AUTH_DB",
       "database_name": "yourfeed-app",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "a7cd3a0c-e4b9-4513-a1dc-e7f3d0c5dfb0",
       "migrations_dir": "hosting/multi/migrations"
     }
   ],

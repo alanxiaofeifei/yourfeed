@@ -4,6 +4,10 @@ This guide describes configuration, not a completed setup. Creating an OAuth app
 
 本文是申请和配置指南，**不代表 Google、GitHub 或 Facebook 客户端已经创建或接入成功**。每个部署只允许一位主人。下文用 `https://yourfeed.example.com` 举例，请换成你自己的 `AUTH_BASE_URL`；不要直接复制示例域名。
 
+## Open signup service
+
+The separate `HOSTING_MODE=multi` service uses verified email codes without `OWNER_EMAIL`; the Worker supplies each tenant’s verified email only after authentication. `GOOGLE_SIGNIN_ENABLED=true` is additionally required for Google. GitHub/Facebook are not enabled in this mode. See [multi-tenant setup and Google steps](hosting.md#enable-google-later-alan). The single-owner rules below continue to apply to existing standalone and invited instances.
+
 ## 费用与选择
 
 | 方式 | 基础登录费用与要求 | YourFeed 用法 |

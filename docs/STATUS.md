@@ -1,5 +1,19 @@
 # 当前项目状态
 
+## Issue #28 · 开放注册（2026-11-21，预览验收完成，待 CI 发布）
+
+- 任务入口：[Issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28)，分支 `feat/open-signup`，基线 `43c368b`；任务明确授权仅新增 `yourfeed-app-preview` / `yourfeed-app`，全门禁及 CI 通过后才发布新生产服务。#28 取代 #26 的新增邀请计划；既有实例保留。
+- `HOSTING_MODE=multi`：共享 auth D1 的原子名额触发器（默认 10 / 批准名单豁免）、OTP 发送前检查、四语满员申请 mailto、Google 显式开关；每用户 SQLite DO 复用业务迁移与 D1 适配、HKDF 密钥、业务环境凭据白名单；每次业务 API 一次 DO RPC。既有 standalone/hosted 分支保留。
+- 每 tick 一用户轮转、最多两项删除，删除先拒绝访问、忙碌 DO 延后清除；沿用托管来源/导入/存储配额与 90 天缓存保留。管理脚本和 Google 步骤见 [hosting](hosting.md)。无运营者 AI/Groq/YouTube Key；只有原有无 Key 免费公共通道。
+- 本地 Node **24.22.1** / npm **11.21.1**、原 package-lock：`npm ci`、typecheck、全量单元 **1013/1013（71 files）**、普通及 multi 构建、预览 dry-run、生产构建 E2E **115 passed / 29 既有可选 skipped**、`git diff --check` 通过。12 例新增真实 workerd 测试覆盖适配层/原子批处理/FTS/JSON、并发名额、mailto、双租户数据与密钥、跨租户解密拒绝、无管理员回退、fixture 默认关闭、轮转/删除。
+- 预览 https://yourfeed-app-preview.alan-xiaofei224.workers.dev ，版本 **dd614e81-2e4d-4fc5-91dd-f92d940fa690**；D1 **76632946-58cf-48a6-ba6c-249252530259**，仅两个共享 auth/account 迁移。`MAX_ACCOUNTS=2`：三个合成并发验证只有两个成功；清理无 DO 的竞态账号后，a/b 各保存不同来源和假 Key、无法互见，c 满员且未生成 OTP，批准 c 后可入、a 满员仍可登录。真实 cron 及删除/旧会话拒绝通过。最终保留 a/b/c（c 为批准名单例外）。未发真实邮件、未调真实 AI。
+- 8 张 Chromium 桌面/390px、明暗主题截图位于仓库外 `/workspace/yf-open-20261121/shots/`；空库截图使用最后重新注册的 c，已等待加载完成并检查零占位卡。满员邮件链接手机布局已目视修复。验收证据 `/workspace/yf-open-20261121/preview-checks.json`；最终交付记录将写入同目录 `DONE.md`。预览 fixture 只在精确预览 origin + 部署标记 + `@example.test` 生效，预览拒发真实邮箱；生产配置无 fixture。
+- `yourfeed` / member-001 前后只读核对版本保持 **e92c4384-e2bd-44d4-b748-f3c90b84a599** / **17e8a935-61e8-4639-94db-6c13c72a57d2**。未修改任何既有实例、数据、密钥、域名或 cron。当前只有一条既有账号 cron，生产新服务将新增一条。
+- 同步：实现本地提交 `4e56439`、管理查询修复 `d861ad2`、手机满员链接修复 `f4c6cfa`；待推送/PR/CI，未合并。所有门槛通过后仅预建了新生产空 D1 **a7cd3a0c-e4b9-4513-a1dc-e7f3d0c5dfb0**，尚未迁移或部署生产 Worker。下一步：推送并创建 #28 PR，CI 全绿后 squash-merge，只部署新的 `yourfeed-app`，匿名验证后登记最终版本。
+- 工具事实：当前为 Codex 会话（系统标识基于 GPT-6）；无法独立读取精确模型版本、推理档位、订阅计费或上下文占用，也未切换模型。任务所附 `gpt-6.1-sol/high`、ModelDial 与 Antigravity 状态是任务作者提供的历史选择说明，不冒充本次实测；以本项目门禁与 CI 为发布证据。
+
+---
+
 ## 未完成（2026-11-15 收尾登记）
 
 首次使用引导（#11–#16 / PR #8）和 AI 速览（#21 / PR #22）已上线生产与 member-001，预览已拆除，不必重做。仍待执行：

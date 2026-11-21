@@ -55,6 +55,10 @@ Need another interface language? Ask your AI to add a translation and send a pul
 
 Source setup now includes a free curated catalog, AI interest conversations, and editable bulk imports (links, OPML, YouTube CSV and JSON). See the [source guide](docs/sources.md), [OAuth setup guide](docs/authentication.md), and [settings navigation preview](docs/screenshots/settings-sections.png).
 
+## Open registration and independent hosting
+
+A separate open-signup service is being implemented for [issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28): email codes, a default ten-account cap with an approved-email override, and one isolated SQLite Durable Object per user. The existing project/hosted entry above retains its current sign-in policy. See [hosting modes and operator commands](docs/hosting.md#open-self-service-signup-issue-28) and [release status](docs/STATUS.md) for the verified deployment stage. Google remains disabled until the operator completes its setup.
+
 ## Independent self-hosting and invited hosting
 
 **Candidate implementation status:** the next-stage changes are implemented in this source tree and covered by automated checks; they are not a claim that the public URL or AlanFeed is running this candidate. Five invited production instances, a verified sending domain and free-plan acceptance still require operator setup. AlanFeed schema publication is blocked until its supported database backup/recovery path is established.
