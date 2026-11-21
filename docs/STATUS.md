@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 2026-11-22（UTC+7）— 开放注册检查点
+
+- 邮箱开放注册已上线。生产站为 [yourfeed-app.alanzhu.dev](https://yourfeed-app.alanzhu.dev/)，Worker `yourfeed-app` 版本 `3c6e5835-9405-45ca-9d4f-5bcdfb623666`，`MAX_ACCOUNTS=10`。[功能 PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29)（squash `74be44f`） · [文档 PR #30](https://github.com/alanxiaofeifei/yourfeed/pull/30)（`0c33951`）
+- Alan 于 2026-11-21（UTC+7）确认开放邮箱注册方案即可，**暂不加 Google 登录**，下方上线记录中的 Google Cloud 回调配置暂缓。**不做真实邮箱注册测试**，以免占用一个名额。
+- 仍待制作首次使用配置引导视频。既有 `yourfeed` 和 `yourfeed-member-001` 未被本轮改动。[Issue #27](https://github.com/alanxiaofeifei/yourfeed/issues/27)
+
 ## 生产上线：开放注册 #28 / PR #29（2026-11-21）
 
 - [PR #29](https://github.com/alanxiaofeifei/yourfeed/pull/29) 在 push / PR 两次 CI 全绿后 squash-merge：**74be44f38aaf5b37a72e1315b5d50ffa2b1d4102**（13:34 UTC）。[Issue #28](https://github.com/alanxiaofeifei/yourfeed/issues/28) 为授权与架构依据，取代 #26 的新增邀请计划；既有独立实例与控制服务保留。
