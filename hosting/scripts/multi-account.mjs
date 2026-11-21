@@ -22,6 +22,6 @@ mkdirSync(privateRoot,{recursive:true,mode:0o700});chmodSync(privateRoot,0o700);
 const dir=mkdtempSync(join(privateRoot,'yourfeed-account-'));
 try{
  const path=join(dir,'operation.sql');writeFileSync(path,sql,{mode:0o600});
- const result=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','d1','execute','AUTH_DB','--remote','--config',config,'--file',path],{stdio:'inherit'});
+ const result=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','d1','execute','AUTH_DB','--remote','--config',config,...(action==='list'?['--command',sql]:['--file',path])],{stdio:'inherit'});
  process.exitCode=result.status??1;
 }finally{rmSync(dir,{recursive:true,force:true});}
