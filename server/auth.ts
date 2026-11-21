@@ -6,6 +6,8 @@ import { drizzle } from 'drizzle-orm/d1';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import type { Env } from './db';
 import { HttpError } from './security';
+import {isMulti,syncAccountCap,signupOpen,fullResponse,fixtureOtp} from './multi-accounts';
+import {tenantSession} from './tenant-session';
 import { hostedEnvironment, activateHostedIdentity, isHosted } from './hosted';
 
 const authUser=sqliteTable('auth_user',{id:text('id').primaryKey(),name:text('name').notNull(),email:text('email').notNull().unique(),emailVerified:integer('email_verified',{mode:'boolean'}).notNull().default(false),image:text('image'),createdAt:integer('created_at',{mode:'timestamp_ms'}).notNull(),updatedAt:integer('updated_at',{mode:'timestamp_ms'}).notNull()});
@@ -17,10 +19,10 @@ const WEEK=7*86400_000,RECENT=10*60_000;
 const value=(env:Env,key:string)=>typeof env[key]==='string'?String(env[key]).trim():'';
 export function authMode(env:Env):'standalone'|'sites' {return value(env,'AUTH_MODE')==='sites'?'sites':'standalone';}
 export function normalizeOwnerEmail(email:string):string {return email.trim().toLowerCase();}
-export function ownerIdentityAllowed(env:Env,user:{email?:unknown;emailVerified?:unknown}):boolean {const email=value(env,'OWNER_EMAIL');return !!email&&user.emailVerified===true&&typeof user.email==='string'&&normalizeOwnerEmail(user.email)===normalizeOwnerEmail(email);}
+export function ownerIdentityAllowed(env:Env,user:{email?:unknown;emailVerified?:unknown}):boolean {if(isMulti(env))return user.emailVerified===true&&typeof user.email==='string'&&/^\S+@[^@\s]+\.[^@\s]+$/.test(user.email);const email=value(env,'OWNER_EMAIL');return !!email&&user.emailVerified===true&&typeof user.email==='string'&&normalizeOwnerEmail(user.email)===normalizeOwnerEmail(email);}
 function settings(env:Env){
  const secret=value(env,'AUTH_SECRET')||value(env,'BETTER_AUTH_SECRET'),owner=normalizeOwnerEmail(value(env,'OWNER_EMAIL')),base=value(env,'AUTH_BASE_URL')||value(env,'BETTER_AUTH_URL');
- if(!env.DB||secret.length<32||!/^\S+@[^@\s]+\.[^@\s]+$/.test(owner)||!base)throw new HttpError(503,'登录服务尚未配置，请设置 OWNER_EMAIL、AUTH_SECRET、AUTH_BASE_URL 与数据库。');
+ if(!env.DB||secret.length<32||(!isMulti(env)&&!/^\S+@[^@\s]+\.[^@\s]+$/.test(owner))||!base)throw new HttpError(503,'登录服务尚未配置，请设置 OWNER_EMAIL、AUTH_SECRET、AUTH_BASE_URL 与数据库。');
  let url:URL;try{url=new URL(base);}catch{throw new HttpError(503,'AUTH_BASE_URL 配置无效。');}
  const localHttp=url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)&&value(env,'AUTH_ALLOW_INSECURE_LOCAL')==='true';
  if((url.protocol!=='https:'&&!localHttp)||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw new HttpError(503,'AUTH_BASE_URL 必须是网站的 HTTPS 根地址。');
@@ -64,11 +66,11 @@ async function sendMail(env:Env,email:string,otp:string,language:'zh'|'en'):Prom
 }
 export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>void){
  const config=settings(env);const socialProviders:Record<string,any>={};
- for(const [provider,prefix] of [['google','GOOGLE'],['github','GITHUB']] as const){const clientId=value(env,prefix+'_CLIENT_ID'),clientSecret=value(env,prefix+'_CLIENT_SECRET');if(clientId&&clientSecret)socialProviders[provider]={clientId,clientSecret};}
+ for(const [provider,prefix] of [['google','GOOGLE'],['github','GITHUB']] as const){const clientId=value(env,prefix+'_CLIENT_ID'),clientSecret=value(env,prefix+'_CLIENT_SECRET');if(clientId&&clientSecret&&(!isMulti(env)||provider==='google'&&env.GOOGLE_SIGNIN_ENABLED==='true'))socialProviders[provider]={clientId,clientSecret};}
  const facebookId=value(env,'FACEBOOK_CLIENT_ID'),facebookSecret=value(env,'FACEBOOK_CLIENT_SECRET');
  // Facebook does not attest mailbox ownership. It may only authenticate a
  // subject explicitly linked by an already verified, recently signed-in owner.
- if(facebookId&&facebookSecret)socialProviders.facebook={clientId:facebookId,clientSecret:facebookSecret,disableSignUp:true,mapProfileToUser:()=>({emailVerified:false})};
+ if(!isMulti(env)&&facebookId&&facebookSecret)socialProviders.facebook={clientId:facebookId,clientSecret:facebookSecret,disableSignUp:true,mapProfileToUser:()=>({emailVerified:false})};
  return betterAuth({
   appName:'YourFeed',baseURL:config.origin,basePath:'/api/auth',secret:config.secret,
   database:drizzleAdapter(drizzle(env.DB as any,{schema}),{provider:'sqlite',schema,transaction:false}),
@@ -102,7 +104,7 @@ export function createOwnerAuth(env:Env,onMailFailure?:(failure:MailFailure)=>vo
   }},
   databaseHooks:{user:{create:{before:async user=>{if(!ownerIdentityAllowed(env,user))return false;return {data:user};}}},session:{create:{before:async session=>{const user=await env.DB.prepare('SELECT email,email_verified FROM auth_user WHERE id=?').bind(session.userId).first<{email:string;email_verified:number}>();if(!user||!ownerIdentityAllowed(env,{email:user.email,emailVerified:!!user.email_verified}))return false;await activateHostedIdentity(env,user.email);return {data:session};}}}},
   verification:{storeInDatabase:true,storeIdentifier:{hash:identifier=>authHmac(env,'verification:'+identifier)}},
-  plugins:[emailOTP({otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||normalizeOwnerEmail(email)!==config.owner)throw new HttpError(403,'此登录方式不可用。');try{await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}catch(error){const failure=error instanceof MailFailure?error:new MailFailure('sending_unavailable','验证码发送暂时不可用，请稍后重试。');onMailFailure?.(failure);/* Better Auth deliberately swallows send-hook errors. Remove only this unsent code and propagate through the request-scoped observer. */await env.DB.prepare('DELETE FROM auth_verification WHERE identifier=? AND value=?').bind(await authHmac(env,'verification:sign-in-otp-'+normalizeOwnerEmail(email)),(await authHmac(env,'otp:'+otp))+':0').run();throw failure;}}})],
+  plugins:[emailOTP({generateOTP:({email})=>fixtureOtp(env,email),otpLength:6,expiresIn:300,allowedAttempts:5,resendStrategy:'rotate',storeOTP:{hash:otp=>authHmac(env,'otp:'+otp)},sendVerificationOTP:async({email,otp,type},ctx)=>{if(type!=='sign-in'||(!isMulti(env)&&normalizeOwnerEmail(email)!==config.owner))throw new HttpError(403,'此登录方式不可用。');try{if(fixtureOtp(env,email))return;await sendMail(env,email,otp,ctx?.request?.headers.get('accept-language')?.toLowerCase().startsWith('zh')?'zh':'en');}catch(error){const failure=error instanceof MailFailure?error:new MailFailure('sending_unavailable','验证码发送暂时不可用，请稍后重试。');onMailFailure?.(failure);/* Better Auth deliberately swallows send-hook errors. Remove only this unsent code and propagate through the request-scoped observer. */await env.DB.prepare('DELETE FROM auth_verification WHERE identifier=? AND value=?').bind(await authHmac(env,'verification:sign-in-otp-'+normalizeOwnerEmail(email)),(await authHmac(env,'otp:'+otp))+':0').run();throw failure;}}})],
  });
 }
 export interface AuthSession {user:{id:string;email?:string;name?:string};session:{id:string;createdAt:Date;expiresAt:Date};}
@@ -115,9 +117,11 @@ function sitesSession(request:Request,env:Env):AuthSession|null {
  return {user:{id,...(email?{email}:{}),...(name?{name:name.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,160)}:{})},session:{id:'sites-managed',createdAt:new Date(0),expiresAt:new Date(8640000000000000)}};
 }
 export async function resolveSession(request:Request,env:Env):Promise<AuthSession|null>{
- if(authMode(env)==='sites')return isHosted(env)?null:sitesSession(request,env);
+ const trusted=tenantSession(env);if(trusted)return trusted;
+ if(authMode(env)==='sites')return isHosted(env)||isMulti(env)?null:sitesSession(request,env);
  if(!request.headers.get('cookie'))return null;
  try{env=await hostedEnvironment(env);const auth=createOwnerAuth(env);const result=await auth.api.getSession({headers:request.headers});if(!result||!ownerIdentityAllowed(env,result.user))return null;
+  if(isMulti(env)&&await env.DB.prepare('SELECT user_id FROM account_deletions WHERE user_id=?').bind(result.user.id).first())return null;
   const createdAt=new Date(result.session.createdAt),expiresAt=new Date(result.session.expiresAt),now=Date.now();
   if(!Number.isFinite(createdAt.getTime())||!Number.isFinite(expiresAt.getTime())||createdAt.getTime()>now||expiresAt.getTime()<=now||createdAt.getTime()+WEEK<=now)return null;
   return {user:{id:result.user.id,email:result.user.email,name:result.user.name},session:{id:result.session.id,createdAt,expiresAt}};
@@ -139,7 +143,7 @@ async function oauthCallbackResult(env:Env,result:Response,origin:string,provide
 }
 export function authCapabilities(env:Env){
  const mode=authMode(env);let configured=mode==='sites';try{if(mode==='standalone'){settings(env);configured=true;}}catch{}
- return {authMode:mode,configured,ownerOnly:true,emailOtp:configured&&mode==='standalone'&&!!value(env,'RESEND_API_KEY')&&!!(value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM')),google:configured&&mode==='standalone'&&!!value(env,'GOOGLE_CLIENT_ID')&&!!value(env,'GOOGLE_CLIENT_SECRET'),github:configured&&mode==='standalone'&&!!value(env,'GITHUB_CLIENT_ID')&&!!value(env,'GITHUB_CLIENT_SECRET'),facebook:configured&&mode==='standalone'&&!!value(env,'FACEBOOK_CLIENT_ID')&&!!value(env,'FACEBOOK_CLIENT_SECRET'),facebookRequiresLink:true,sessionDays:7,recentAuthMinutes:10,otpExpiresSeconds:300,otpResendSeconds:60};
+ return {authMode:mode,configured,ownerOnly:!isMulti(env),emailOtp:configured&&mode==='standalone'&&!!value(env,'RESEND_API_KEY')&&!!(value(env,'AUTH_EMAIL_FROM')||value(env,'RESEND_FROM')),google:configured&&mode==='standalone'&&(!isMulti(env)||env.GOOGLE_SIGNIN_ENABLED==='true')&&!!value(env,'GOOGLE_CLIENT_ID')&&!!value(env,'GOOGLE_CLIENT_SECRET'),github:!isMulti(env)&&configured&&mode==='standalone'&&!!value(env,'GITHUB_CLIENT_ID')&&!!value(env,'GITHUB_CLIENT_SECRET'),facebook:!isMulti(env)&&configured&&mode==='standalone'&&!!value(env,'FACEBOOK_CLIENT_ID')&&!!value(env,'FACEBOOK_CLIENT_SECRET'),facebookRequiresLink:true,sessionDays:7,recentAuthMinutes:10,otpExpiresSeconds:300,otpResendSeconds:60};
 }
 export async function handleAuth(request:Request,env:Env):Promise<Response>{
  const path=new URL(request.url).pathname;
@@ -150,23 +154,26 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
   const config=settings(env),origin=new URL(request.url).origin;
   if(origin!==config.origin)throw new HttpError(403,'登录请求来源不匹配。');
   const relative=path.slice('/api/auth'.length);const callback=/^\/callback\/(google|github|facebook)$/.test(relative);
-  const allowed=new Set(['/email-otp/send-verification-otp','/sign-in/email-otp','/sign-in/social','/link-social','/sign-out','/revoke-sessions']);
+  const allowed=new Set(['/email-otp/send-verification-otp','/sign-in/email-otp','/sign-in/social','/link-social','/sign-out','/revoke-sessions',...(isMulti(env)?['/signup-check']:[])]);
   if(!allowed.has(relative)&&!callback)return json({error:'登录接口不存在。'},404);
   if(!callback){if(request.method!=='POST')return json({error:'请求方法不支持。'},405);if(request.headers.get('origin')!==config.origin||!request.headers.get('content-type')?.includes('application/json'))throw new HttpError(403,'请从本站页面发起登录请求。');}
   let body:Record<string,unknown>={};
   if(request.method==='POST'&&!callback){const raw=await request.clone().text();if(raw.length>4096)throw new HttpError(413,'登录请求内容过大。');try{body=JSON.parse(raw);}catch{throw new HttpError(400,'登录请求格式不正确。');}if(!body||typeof body!=='object'||Array.isArray(body))throw new HttpError(400,'登录请求格式不正确。');}
+  if(isMulti(env))await syncAccountCap(env);
+  if(relative==='/signup-check'){if(typeof body.email!=='string'||body.email.length>254||!/^\S+@[^@\s]+\.[^@\s]+$/.test(body.email))throw new HttpError(400,'Invalid email');if(!await consumeAuthRate(env,'check-ip',ip(request),60,3600))throw new HttpError(429,'Too many requests');return await signupOpen(env,normalizeOwnerEmail(body.email))?json({status:'open'}):fullResponse(body.email,request);}
   if(relative==='/revoke-sessions'||relative==='/link-social')await requireRecentAuth(request,env);
   if(relative==='/email-otp/send-verification-otp'){
    if(!authCapabilities(env).emailOtp)throw new HttpError(503,'邮箱验证码尚未配置，可使用已启用的其他登录方式。');
    if(typeof body.email!=='string'||!/^\S+@[^@\s]+\.[^@\s]+$/.test(body.email)||body.email.length>254||body.type!=='sign-in')throw new HttpError(400,'请输入有效邮箱并请求登录验证码。');
+   if(isMulti(env)&&env.MULTI_DEPLOYMENT==='preview'&&!fixtureOtp(env,normalizeOwnerEmail(body.email)))throw new HttpError(403,'Preview accepts synthetic @example.test addresses only.');
    if(!await consumeAuthRate(env,'send-ip',ip(request),10,3600))throw new HttpError(429,'请求过于频繁，请稍后再试。');
    if(!await consumeAuthRate(env,'send-email',normalizeOwnerEmail(body.email),1,60))throw new HttpError(429,'请等待 60 秒后再获取验证码。');
-   if(normalizeOwnerEmail(body.email)!==config.owner)return json({success:true});
+   if(isMulti(env)){if(!await signupOpen(env,normalizeOwnerEmail(body.email)))return fullResponse(body.email,request);}else if(normalizeOwnerEmail(body.email)!==config.owner)return json({success:true});
   }
   if(relative==='/sign-in/email-otp'){
    if(typeof body.email!=='string'||typeof body.otp!=='string'||!/^\d{6}$/.test(body.otp))throw new HttpError(400,'请输入邮箱与六位验证码。');
    if(!await consumeAuthRate(env,'verify-ip',ip(request),30,600))throw new HttpError(429,'验证请求过于频繁，请稍后再试。');
-   if(normalizeOwnerEmail(body.email)!==config.owner)throw new HttpError(400,'验证码无效或已过期。');
+   if(!isMulti(env)&&normalizeOwnerEmail(body.email)!==config.owner)throw new HttpError(400,'验证码无效或已过期。');
   }
   if(relative==='/sign-in/social'||relative==='/link-social'){
    if(body.provider!=='google'&&body.provider!=='github'&&body.provider!=='facebook')throw new HttpError(400,'请选择已启用的登录方式。');
@@ -179,6 +186,7 @@ export async function handleAuth(request:Request,env:Env):Promise<Response>{
   let mailFailure:MailFailure|undefined;const auth=createOwnerAuth(env,failure=>{mailFailure=failure;});const result=await auth.handler(forwarded);
   // Native runInBackgroundOrAwait awaits but catches hook errors; never report successful sending after rejection.
   if(mailFailure){await result.body?.cancel();throw mailFailure;}
+  if(isMulti(env)&&relative==='/sign-in/email-otp'&&result.status>=400&&typeof body.email==='string'&&!await signupOpen(env,normalizeOwnerEmail(body.email)))return fullResponse(body.email,request);
   if(callback&&result.status>=300&&result.status<400)return oauthCallbackResult(env,result,config.origin,relative.slice('/callback/'.length));
   if(result.status>=400){if(relative==='/sign-in/email-otp'&&result.status<500&&result.status!==429)return json({error:'验证码无效或已过期。'},400);return json({error:result.status===429?'请求过于频繁，请稍后重试。':'登录未完成，请检查验证码、邮箱或登录服务配置。'},result.status);}
   // Sign-in session token stays in the HttpOnly cookie; never copy it into browser-readable JSON.

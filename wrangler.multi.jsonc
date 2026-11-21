@@ -1,0 +1,69 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yourfeed-app",
+  "account_id": "ea884be522b147922e986feade4a2cfb",
+  "compatibility_date": "2026-11-21",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "worker/multi.ts",
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "yourfeed-app",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "hosting/multi/migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TENANT_FEEDS",
+        "class_name": "TenantFeed"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TenantFeed"
+      ]
+    }
+  ],
+  "vars": {
+    "AUTH_MODE": "standalone",
+    "HOSTING_MODE": "multi",
+    "MAX_ACCOUNTS": "10",
+    "AUTH_BASE_URL": "https://yourfeed-app.alanzhu.dev",
+    "AUTH_EMAIL_FROM": "YourFeed <login@mail.alanzhu.dev>",
+    "BACKGROUND_SCHEDULE_CONFIGURED": "true",
+    "MULTI_DEPLOYMENT": "production"
+  },
+  "triggers": {
+    "crons": [
+      "*/30 * * * *"
+    ]
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+  "routes": [
+    {
+      "pattern": "yourfeed-app.alanzhu.dev",
+      "custom_domain": true
+    }
+  ]
+}

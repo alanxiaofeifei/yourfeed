@@ -4,7 +4,7 @@ import { encryptSecret, decryptSecret, HttpError, providerName } from './securit
 import { validateProviderBaseUrl } from './provider-endpoint';
 import { getProfile } from './profile';
 import { profileDate } from '../shared/profile';
-import {isHosted} from './hosted';
+import {hasHostedLimits as isHosted} from './hosted';
 import {sourceRecord} from './source-record';
 import {honestContent} from '../shared/content-coverage';
 import { DEFAULT_MODELS, PROVIDERS, PRESET_BASE_URLS, PROVIDER_METADATA } from '../shared/providers';

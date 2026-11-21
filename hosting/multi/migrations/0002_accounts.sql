@@ -1,0 +1,10 @@
+CREATE TABLE multi_policy (id INTEGER PRIMARY KEY CHECK(id=1), max_accounts INTEGER NOT NULL CHECK(max_accounts>=0));
+INSERT INTO multi_policy VALUES (1,10);
+CREATE TABLE approved_emails (email TEXT PRIMARY KEY COLLATE NOCASE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE account_deletions (user_id TEXT PRIMARY KEY, requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE multi_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TRIGGER account_cap BEFORE INSERT ON auth_user
+WHEN NOT EXISTS (SELECT 1 FROM approved_emails WHERE email=lower(trim(NEW.email)))
+ AND (SELECT count(*) FROM auth_user)>=COALESCE((SELECT max_accounts FROM multi_policy WHERE id=1),0)
+BEGIN SELECT RAISE(ABORT,'ACCOUNT_CAP_FULL'); END;

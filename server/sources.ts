@@ -4,7 +4,7 @@ import {HttpError} from './security';
 import {canonicalUrl,plainText,resolveContentUrl,validatePublicUrl} from './fetch-safe';
 import type {PublicDnsResolver} from './provider-endpoint';
 import {sourcePlatformWarning} from '../shared/source-export';
-const hosted=(env:Env)=>String((env as Env&{HOSTING_MODE?:string}).HOSTING_MODE||'')==='hosted';
+import {hasHostedLimits as hosted} from './hosted';
 const active=(source:Source)=>source.enabled&&!(source as Source&{blocked?:boolean}).blocked;
 const PLATFORMS=new Set<Source['platform']>(['youtube','bilibili','rss','github','x','web']);
 const TOPICS=new Set<Topic>(['ai','automation','network','linux','it','code','making','cooking','science','humanities','english','tools']);

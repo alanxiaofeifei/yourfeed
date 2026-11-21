@@ -2,7 +2,7 @@ import type {Env} from './db';
 import {getState,setState,databaseStorage} from './db';
 import {rebuildSearchIndex} from './library';
 import {HttpError} from './security';
-import {isHosted} from './hosted';
+import {hasHostedLimits as isHosted} from './hosted';
 
 const DAY=86400000;
 export const RETENTION_DAYS=90;
